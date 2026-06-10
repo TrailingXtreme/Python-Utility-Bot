@@ -1,0 +1,19 @@
+[project]
+name = "bot"
+version = "0.1.0"
+description = "A simple template for building a beautiful discord bot with nextcord.Here I have also implemented the buttons, discord modals and select menus along with slash commands. This project is under progress so you have to wait for some time to get your wanted features."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "advancedtagscriptengine>=3.2.2",
+    "alembic>=1.18.4",
+    "asyncpg>=0.31.0",
+    "discord-ext-menus>=1.1",
+    "discord-py[voice]>=2.7.1",
+    "humanfriendly>=10.0",
+    "psutil>=7.2.2",
+    "pydantic>=2.13.4",
+    "quickchart-io>=2.0.0",
+    "rapidfuzz>=3.14.5",
+    "wavelink>=3.5.2",
+]
