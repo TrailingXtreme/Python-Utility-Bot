@@ -4,16 +4,47 @@ version = "0.1.0"
 description = "A simple template for building a beautiful discord bot with nextcord.Here I have also implemented the buttons, discord modals and select menus along with slash commands. This project is under progress so you have to wait for some time to get your wanted features."
 readme = "README.md"
 requires-python = ">=3.12"
+
 dependencies = [
-    "advancedtagscriptengine>=3.2.2",
-    "alembic>=1.18.4",
-    "asyncpg>=0.31.0",
-    "discord-ext-menus>=1.1",
+    # ── Discord ───────────────────────────────────────────────────
     "discord-py[voice]>=2.7.1",
+    # Paginator views used by Help / About cogs.
+    "discord-ext-menus>=1.1",
+    # ── Music — Lavalink 4 client ─────────────────────────────────
+    # Requires a running Lavalink 4 server.
+    # See docker-compose.yml — a pre-configured node is included.
+    # BREAKING vs nextwave: Player / Queue / Playable API is entirely new.
+    "wavelink>=3.5.2",
+    # ── PostgreSQL ────────────────────────────────────────────────
+    # asyncpg — async driver used by the bot at runtime.
+    "asyncpg>=0.31.0",
+    # Alembic — schema migration tool (CLI + runtime).
+    # Run:  alembic upgrade head   to apply migrations.
+    "alembic>=1.18.4",
+    # psycopg2-binary — only needed by the Alembic CLI for offline migration
+    # generation; never imported in bot code.
+    "psycopg2-binary>=2.9.12",
+    # ── Data Validation & Settings ────────────────────────────────
+    # pydantic v2 — used for typed DB models and all data validation.
+    "pydantic>=2.13.4",
+    # pydantic-settings — reads .env files; replaces python-dotenv entirely.
+    # Settings class lives in bot/config.py.
+    "pydantic-settings>=2.14.1",
+    # ── HTTP ──────────────────────────────────────────────────────
+    "aiohttp>=3.14.1",
+    # ── Search — Algolia (Discord Developer Docs cog) ─────────────
+    # The Docs cog is dependent on this
+    "algoliasearch>=4.42.0",
+    # ── Utilities ─────────────────────────────────────────────────
     "humanfriendly>=10.0",
     "psutil>=7.2.2",
-    "pydantic>=2.13.4",
-    "quickchart-io>=2.0.0",
     "rapidfuzz>=3.14.5",
-    "wavelink>=3.5.2",
+    # ── Calculator cog ────────────────────────────────────────────
+    # Runs independently of discord — should be compatible as-is.
+    # Verify with: python -c "from TagScriptEngine import Interpreter, block; print('OK')"
+    "advancedtagscriptengine>=3.2.2",
+    # ── Charts (About / vote cog) ─────────────────────────────────
+    "quickchart-io>=2.0.0",
+    # ── DNS ───────────────────────────────────────────────────────
+    "dnspython>=2.8.0",
 ]
