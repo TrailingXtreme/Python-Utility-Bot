@@ -1,8 +1,70 @@
+# =============================================================
+#  .gitignore
+# =============================================================
+
+# ── Environment & secrets ─────────────────────────────────────
 .env
+.env.local
+.env.development
+.env.production
 
-.env.developement
+# ── Python ────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+*.manifest
+*.spec
 
-__pycache__
+# ── Virtual environments ──────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
 
+# ── Type checking / linting cache ─────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# ── Testing ───────────────────────────────────────────────────
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+# ── Lavalink ──────────────────────────────────────────────────
+# Plugin JARs downloaded at runtime — never commit these.
+lavalink/plugins/
+
+# ── Alembic ───────────────────────────────────────────────────
+# Generated migration scripts should be committed.
+# Only exclude local override files.
+alembic.ini.local
+
+# ── Docker ────────────────────────────────────────────────────
+# Local override compose files (e.g. with mounted source for hot reload).
+docker-compose.override.yml
+
+# ── Misc ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
 install_packages.py
-
