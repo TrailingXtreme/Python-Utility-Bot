@@ -1,0 +1,4 @@
+{
+    "python.analysis.autoImportCompletions": true,
+    "python.defaultInterpreterPath": "/workspaces/Python-Utility-Bot/bot/.venv/bin/python"
+}
