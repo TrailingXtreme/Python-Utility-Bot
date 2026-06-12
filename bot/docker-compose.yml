@@ -1,40 +1,38 @@
 # =============================================================
-#  docker-compose.yml
+#  compose.yml
 #
 #  Services:
-#    postgres  — PostgreSQL 16 (bot database)
-#    lavalink  — Lavalink 4    (music node)
+#    postgres  — PostgreSQL 17  (bot database)
+#    lavalink  — Lavalink 4.2.2 (music node)
 #
 #  Usage:
-#    docker compose up -d            # start both services
-#    docker compose logs -f lavalink # watch lavalink output
-#    docker compose down             # stop (keeps volumes)
-#    docker compose down -v          # stop AND delete all data
+#    docker compose up -d               # start both in background
+#    docker compose logs -f lavalink    # tail lavalink output
+#    docker compose down                # stop (volumes kept)
+#    docker compose down -v             # stop + delete all data
 #
-#  The bot itself is NOT in this file — run it directly with:
-#    python bot/bot.py
-#  or add a bot service here once deployment is finalized.
+#  The bot runs outside Docker:
+#    uv run python bot/bot.py
 # =============================================================
+
+# NOTE: 'version' is obsolete in Compose v2 — omit it to silence the warning.
 
 services:
 
-  # ── PostgreSQL 16 ───────────────────────────────────────────
+  # ── PostgreSQL 17 ────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: discord_bot_postgres
     restart: unless-stopped
-    env_file:
-      - .env                   # reads DATABASE_URL for connection info
     environment:
       POSTGRES_USER: botuser
       POSTGRES_PASSWORD: botpassword
       POSTGRES_DB: discordbot
-      # pgdata inside named volume keeps data across container rebuilds
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      # Expose only to localhost — do NOT expose 5432 publicly on a VPS.
+      # Bind only to localhost — never expose 5432 publicly on a VPS.
       - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U botuser -d discordbot"]
@@ -44,27 +42,25 @@ services:
       start_period: 10s
 
 
-  # ── Lavalink 4 ──────────────────────────────────────────────
+  # ── Lavalink 4.2.2 ───────────────────────────────────────────
   lavalink:
-    image: ghcr.io/lavalink-devs/lavalink:4-alpine
+    # Alpine variant: same JVM, ~40% smaller image.
+    image: ghcr.io/lavalink-devs/lavalink:4.2.2-alpine
     container_name: discord_bot_lavalink
     restart: unless-stopped
-    env_file:
-      - .env                   # passes SPOTIFY_CLIENT_ID/SECRET to application.yml
     environment:
-      # Spotify credentials are interpolated inside lavalink/application.yml
-      # via Spring Boot's ${ENV_VAR:default} syntax.
-      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
-      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET}
-      # Cap JVM heap — increase to 1g if you have 2GB+ RAM to spare.
-      - _JAVA_OPTIONS=-Xmx512m
+      # Passed through to Spring Boot's ${VAR:default} interpolation in
+      # application.yml so credentials never need to be hard-coded there.
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID:-}
+      - SPOTIFY_CLIENT_SECRET=${SPOTIFY_CLIENT_SECRET:-}
+      # Increase heap (-Xmx) if Lavalink OOM-kills on large queues.
+      - _JAVA_OPTIONS=-Xmx512m -XX:+UseG1GC
     volumes:
-      # application.yml is mounted read-only; edit it, then restart the container.
       - ./lavalink/application.yml:/opt/Lavalink/application.yml:ro
-      # Plugin JARs are downloaded here on first start and cached across restarts.
+      # Plugin JARs are downloaded on first start and cached here.
+      # Survives container rebuilds; delete to force a plugin re-download.
       - lavalink_plugins:/opt/Lavalink/plugins
     ports:
-      # Expose only to localhost — Lavalink has no auth beyond the password.
       - "127.0.0.1:2333:2333"
     healthcheck:
       test:
@@ -75,11 +71,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      # Lavalink downloads plugins on first boot — give it time.
-      start_period: 60s
+      # First boot downloads plugin JARs — allow extra time.
+      start_period: 90s
 
 
-# ── Named volumes ────────────────────────────────────────────
+# ── Volumes ───────────────────────────────────────────────────
 volumes:
   postgres_data:
     driver: local

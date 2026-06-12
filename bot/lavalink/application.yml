@@ -1,12 +1,12 @@
 # =============================================================
 #  lavalink/application.yml
-#  Lavalink 4 — mounted into the container at /opt/Lavalink/application.yml
+#  Lavalink 4.2.2
 #
-#  Plugins loaded on first start (JARs cached in lavalink_plugins volume):
-#    1. youtube-plugin  — robust YouTube source (replaces built-in)
-#    2. lavasrc-plugin  — Spotify / Apple Music URL resolution
+#  Plugins (downloaded to the lavalink_plugins Docker volume):
+#    youtube-plugin  1.18.1  — robust YouTube source
+#    lavasrc-plugin  4.8.3   — Spotify / Apple Music URL resolution
 #
-#  After editing this file, restart the container:
+#  Restart the container after editing:
 #    docker compose restart lavalink
 # =============================================================
 
@@ -14,39 +14,41 @@ server:
   port: 2333
   address: 0.0.0.0
   http2:
-    enabled: false            # keep false unless you put a TLS proxy in front
+    enabled: false
 
 lavalink:
   # ── Plugin downloads ─────────────────────────────────────────
+  # IMPORTANT: repository must be the plain Maven path, NOT the Reposilite
+  # web-UI hash-route (https://maven.lavalink.dev/#/releases is wrong — the
+  # '#' fragment is stripped by the HTTP client, resolving to the site root).
   plugins:
-    # YouTube source — more reliable than the built-in YouTube support.
-    # Keep sources.youtube: false below so they don't conflict.
-    - dependency: "dev.lavalink.youtube:youtube-plugin:1.8.3"
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
       repository: "https://maven.lavalink.dev/releases"
-    # LavaSrc — resolves Spotify / Apple Music URLs via YouTube search.
-    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.2.0"
-      repository: "https://maven.topi.wtf/releases"
+      snapshot: false
+
+    - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.3"
+      repository: "https://maven.lavalink.dev/releases"
+      snapshot: false
 
   server:
-    # ── IMPORTANT: change this password AND update .env / LAVALINK_PASSWORD ──
+    # ── SECURITY: change this password AND update .env LAVALINK_PASSWORD ──
     password: "youshallnotpass"
 
     sources:
-      # Disabled: youtube-plugin above handles YouTube.
+      # Built-in YouTube disabled — youtube-plugin handles it instead.
       youtube: false
       bandcamp: true
       soundcloud: true
       twitch: true
       vimeo: true
-      # Allow direct HTTP streams (e.g. radio streams).
-      http: true
+      http: true    # allows direct stream URLs (radio, etc.)
       local: false
 
     filters:
       volume: true
       equalizer: true
       karaoke: true
-      timescale: true
+      timescale: true   # pitch/speed control
       tremolo: true
       vibrato: true
       distortion: true
@@ -54,55 +56,104 @@ lavalink:
       channelMix: true
       lowPass: true
 
-    # Audio buffer sizes — increase bufferDurationMs if you experience stuttering.
     bufferDurationMs: 400
     frameBufferDurationMs: 5000
     playerUpdateInterval: 5
-
-    # Search endpoints — used by wavelink's YouTubeTrack / SoundCloudTrack.
     youtubeSearchEnabled: true
     soundcloudSearchEnabled: true
-
+    soundcloudFilterOutPreviewTracks: false   # added in 4.2.0 — hides 30s previews
     youtubePlaylistLoadLimit: 6
 
 
-# ── LavaSrc plugin configuration ─────────────────────────────
-# Credentials are injected from environment variables set in docker-compose.yml.
-# Spring Boot syntax: ${ENV_VAR:default_value}
+# ── youtube-plugin configuration ─────────────────────────────
+# Activates when sources.youtube is false and the plugin is loaded.
 plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    allowDirectVideoIds: true
+    allowDirectPlaylistIds: true
+
+    # Client priority order.  Clients are tried in sequence; the first that
+    # returns audio is used.  MUSIC is best for music.youtube.com URLs.
+    # ANDROID_TESTSUITE has been dropped — it is no longer reliable.
+    # WEBEMBEDDED and ANDROID_VR give good fallback coverage.
+    clients:
+      - MUSIC
+      - WEB
+      - WEBEMBEDDED
+      - ANDROID_VR
+      - TVHTML5EMBEDDED
+
+    # ── OAuth (optional) ────────────────────────────────────────
+    # Provides more stable, authenticated access to YouTube.
+    # On first run with enabled: true and no refreshToken, Lavalink will
+    # print a device-code URL to the log — open it and sign in.  The
+    # resulting refresh token is then printed; paste it here and set
+    # skipInitialization: true to avoid re-authenticating on every restart.
+    # NOTE: you do NOT need both OAuth and PoToken; pick one.
+    #   See: https://github.com/lavalink-devs/youtube-source#using-oauth-tokens
+    # oauth:
+    #   enabled: false
+    #   skipInitialization: false   # set true once you have a refreshToken
+    #   refreshToken: ""
+
+    # ── PoToken (optional) ──────────────────────────────────────
+    # A "Proof of Origin Token" that reduces bot-detection throttling.
+    # Only applies to WEB and WEBEMBEDDED clients (not needed with OAuth).
+    # Retrieve your token from a browser session or use a helper tool.
+    #   See: https://github.com/lavalink-devs/youtube-source#using-a-potoken
+    # pot:
+    #   token: ""
+    #   visitorData: ""
+
+  # ── LavaSrc plugin configuration ───────────────────────────
+  # Credentials injected from Docker environment variables via
+  # Spring Boot's ${VAR:default} syntax.
   lavasrc:
     providers:
-      # Priority order for resolving tracks by ISRC (International Standard Recording Code).
-      # Spotify tracks carry an ISRC; this finds the best YouTube equivalent.
+      # ISRC lookup first — finds the best YouTube match for Spotify tracks.
       - 'ytsearch:"%ISRC%"'
       - "ytsearch:%QUERY%"
       - "scsearch:%QUERY%"
     sources:
       spotify: true
-      applemusic: false       # enable and add credentials below if you want Apple Music
+      applemusic: false   # enable + add token below for Apple Music support
       deezer: false
       yandexMusic: false
-      youtube: true           # LavaSrc uses youtube-plugin when resolving YouTube
+      youtube: true       # LavaSrc uses youtube-plugin for YouTube resolution
     spotify:
       clientId: "${SPOTIFY_CLIENT_ID:}"
       clientSecret: "${SPOTIFY_CLIENT_SECRET:}"
       countryCode: "US"
-      playlistLoadLimit: 6
-      albumLoadLimit: 6
-    # Uncomment to enable Apple Music support:
+      playlistLoadLimit: 6      # pages × 100 tracks
+      albumLoadLimit: 6         # pages × 50 tracks
+      resolveArtistsInSearch: false   # set true to enrich artist results (slower)
+      localFiles: false               # set true to include local Spotify tracks
+
+      # Spotify's token endpoint has been changing.  If anonymous-token
+      # requests start failing (e.g. autogenerated playlists break), set
+      # preferAnonymousToken: true and point customTokenEndpoint at a
+      # spotify-tokener sidecar.  See: https://github.com/topi314/spotify-tokener
+      preferAnonymousToken: false
+      # customTokenEndpoint: "http://localhost:8080/api/token"
+
+    # Uncomment to enable Apple Music:
     # applemusic:
     #   mediaAPIToken: "${APPLE_MUSIC_TOKEN:}"
     #   countryCode: "US"
+    #   playlistLoadLimit: 6
+    #   albumLoadLimit: 6
 
 
-# ── Metrics (disabled — enable if you add a Prometheus/Grafana stack) ──
+# ── Metrics (disabled — enable with a Prometheus/Grafana stack) ──
 metrics:
   prometheus:
     enabled: false
     endpoint: /metrics
 
 
-# ── Error reporting (disabled by default) ─────────────────────
+# ── Error reporting ───────────────────────────────────────────
 sentry:
   dsn: ""
   environment: ""
