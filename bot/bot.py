@@ -25,7 +25,7 @@ import discord
 from config import settings
 from discord import app_commands
 from discord.ext import commands
-from bot.util.db.repositories import Repositories
+from util.db.repositories import Repositories
 
 log = logging.getLogger(__name__)
 
@@ -104,6 +104,7 @@ class DiscordBot(commands.AutoShardedBot):
         intents = discord.Intents.default()
         intents.members = True
         intents.message_content = True
+        intents.guilds = True
 
         super().__init__(
             command_prefix=get_prefix,

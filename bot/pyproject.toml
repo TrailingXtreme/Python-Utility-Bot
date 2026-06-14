@@ -10,48 +10,38 @@ dependencies = [
     # ── Discord ───────────────────────────────────────────────────────────────
     # [voice] pulls in PyNaCl automatically — no separate PyNaCl pin needed.
     "discord-py[voice]>=2.7.1",
-
     # Button-based pagination used in Help / About cogs.
     # TODO (Phase 5): replace with custom discord.ui.View paginators to remove
     #                 this dependency entirely.
     "discord-ext-menus>=1.1",
-
     # ── Music — Lavalink 4 client ─────────────────────────────────────────────
     # Full API rewrite vs nextwave; Music cog is ported in Phase 6.
     # Requires the Lavalink 4.2.2 node — see docker-compose.yml.
     "wavelink>=3.5.2",
-
     # ── PostgreSQL ────────────────────────────────────────────────────────────
     "asyncpg>=0.31.0",          # async driver — used by the bot at runtime
     "alembic>=1.18.4",          # schema migrations; run: uv run alembic upgrade head
     "psycopg2-binary>=2.9.12",  # Alembic CLI only; never imported in bot code
-
     # ── Data Validation & Settings ────────────────────────────────────────────
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",   # reads .env; see bot/config.py
-
     # ── HTTP ──────────────────────────────────────────────────────────────────
     "aiohttp>=3.14.1",
-
     # ── Search — Algolia (Docs cog) ───────────────────────────────────────────
     # BREAKING CHANGE vs v2: import path changed in v3+.
     #   Old (v2): from algoliasearch.search_client import SearchClient
     #   New (v4): from algoliasearch.search.client  import SearchClient
     # The Docs cog WILL FAIL at import until updated in Phase 5.
     "algoliasearch>=4.42.0",
-
     # ── Utilities ─────────────────────────────────────────────────────────────
     "humanfriendly>=10.0",
     "psutil>=7.2.2",
     "rapidfuzz>=3.14.5",
-
     # ── Calculator cog ────────────────────────────────────────────────────────
     # Maintained fork of TagScriptEngine; runs independently of discord.
-    "advancedtagscriptengine>=3.2.2",
-
+    "simpleeval>=1.0.7",
     # ── Charts (About / vote cog) ─────────────────────────────────────────────
     "quickchart-io>=2.0.0",
-
     # ── DNS ───────────────────────────────────────────────────────────────────
     # Was required by pymongo for SRV URLs; may still be an indirect dep of
     # aiohttp in some environments. Safe to remove if uv reports it unused.

@@ -8,19 +8,6 @@ resolution-markers = [
 ]
 
 [[package]]
-name = "advancedtagscriptengine"
-version = "3.2.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "pyparsing" },
-    { name = "typing-extensions" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d3/3e/a2f67a03ece3e2f234869486aa0cb986c119560f8d6768e860d6b3a4781d/advancedtagscriptengine-3.2.2.tar.gz", hash = "sha256:bfab0485bc5e95563b121186e4799c3455a53c6ad81e3686bddd01c62bb99c56", size = 40741, upload-time = "2024-07-28T02:09:24.835Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/03/327556ee4f12c0b94f882e95fa1c0bdf2e05f0507b4328fedc496c5be0a3/AdvancedTagScriptEngine-3.2.2-py3-none-any.whl", hash = "sha256:702b9435ee99659e5bb3047313343ad842731418aa2ce10c05b93361e040cdb8", size = 51385, upload-time = "2024-07-28T02:09:23.545Z" },
-]
-
-[[package]]
 name = "aiohappyeyeballs"
 version = "2.6.2"
 source = { registry = "https://pypi.org/simple" }
@@ -637,7 +624,6 @@ name = "discord-bot"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "advancedtagscriptengine" },
     { name = "aiohttp" },
     { name = "alembic" },
     { name = "algoliasearch" },
@@ -652,6 +638,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "quickchart-io" },
     { name = "rapidfuzz" },
+    { name = "simpleeval" },
     { name = "wavelink" },
 ]
 
@@ -667,7 +654,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "advancedtagscriptengine", specifier = ">=3.2.2" },
     { name = "aiohttp", specifier = ">=3.14.1" },
     { name = "alembic", specifier = ">=1.18.4" },
     { name = "algoliasearch", specifier = ">=4.42.0" },
@@ -682,6 +668,7 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.14.1" },
     { name = "quickchart-io", specifier = ">=2.0.0" },
     { name = "rapidfuzz", specifier = ">=3.14.5" },
+    { name = "simpleeval", specifier = ">=1.0.7" },
     { name = "wavelink", specifier = ">=3.5.2" },
 ]
 
@@ -1529,15 +1516,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pyparsing"
-version = "3.3.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f3/91/9c6ee907786a473bf81c5f53cf703ba0957b23ab84c264080fb5a450416f/pyparsing-3.3.2.tar.gz", hash = "sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc", size = 6851574, upload-time = "2026-01-21T03:57:59.36Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/bd/c038d7cc38edc1aa5bf91ab8068b63d4308c66c4c8bb3cbba7dfbc049f9c/pyparsing-3.3.2-py3-none-any.whl", hash = "sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d", size = 122781, upload-time = "2026-01-21T03:57:55.912Z" },
-]
-
-[[package]]
 name = "pyreadline3"
 version = "3.5.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1722,6 +1700,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/49/71/9b29d6b87cef468d697f43c6a91e3fae4a80185779d7d5a4ef27d173439f/ruff-0.15.17-py3-none-win32.whl", hash = "sha256:596065960ab1ff593f744220c9fe6580eda00a95003cffa9f4048bb5b1bf0392", size = 10925574, upload-time = "2026-06-11T17:54:55.723Z" },
     { url = "https://files.pythonhosted.org/packages/3d/b2/8fc77f3723228836fa5d12497eb71c808f83782e10d058d2b15cfa14640b/ruff-0.15.17-py3-none-win_amd64.whl", hash = "sha256:6769e5fa1710b179b92e0bfa5a51735b35baea9013dadb06d5f44cbcf9547084", size = 12058788, upload-time = "2026-06-11T17:54:41.042Z" },
     { url = "https://files.pythonhosted.org/packages/2d/c7/c53e8dbff9c9dc4b7928773421ae294a5d28fcb8dcda1a089579d3a7e510/ruff-0.15.17-py3-none-win_arm64.whl", hash = "sha256:f3be1fbb34bcdfd146240d8fb92a709d4c2c8191348580a3c044ec60fa0b4456", size = 11355275, upload-time = "2026-06-11T17:54:43.635Z" },
+]
+
+[[package]]
+name = "simpleeval"
+version = "1.0.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/9d/e7c9309940794dd3073cba2e5101df5874d84243595ce63b1e1c8f9b9c76/simpleeval-1.0.7.tar.gz", hash = "sha256:1e10e5f9fec597814444e20c0892ed15162fa214c8a88f434b5b077cf2fef85b", size = 30250, upload-time = "2026-03-16T10:53:03.464Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0f/2f/f32aa85591882378bb43caa09363f3ed97df399369a5144c7f19f2275bc0/simpleeval-1.0.7-py3-none-any.whl", hash = "sha256:97ac271bfd8f2af9e7b9a36ceea67617f26fa873f9d5ae1922f64d4c1442534b", size = 18792, upload-time = "2026-03-16T10:53:02.103Z" },
 ]
 
 [[package]]
