@@ -27,11 +27,12 @@ from sqlalchemy import engine_from_config, pool, text
 # ── Path setup ───────────────────────────────────────────────
 # Ensure the project root is on sys.path so `from bot.config import settings`
 # resolves whether alembic is run from the project root or a subdirectory.
-_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+_ALEMBIC_DIR = os.path.dirname(os.path.abspath(__file__))
+_PROJECT_ROOT = os.path.abspath(os.path.join(_ALEMBIC_DIR, "..", ".."))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from bot.config import settings  # noqa: E402
+from config import settings  # noqa: E402
 
 # ── Alembic config object ─────────────────────────────────────
 config = context.config

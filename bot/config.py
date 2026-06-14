@@ -67,8 +67,6 @@ class Settings(BaseSettings):
     spotify_client_secret: SecretStr = Field("", alias="SPOTIFY_CLIENT_SECRET")
 
     # ── External APIs ────────────────────────────────────────────────────────
-    # RapidAPI key for the Fun cog (dad jokes endpoint).
-    joke_api: str = Field("", alias="JOKE_API")
     # Arbitrary secret identifier used for the vote database document.
     secret_id: SecretStr = Field(alias="SECRET_ID")
     # Optional integrations — empty string = feature disabled.
