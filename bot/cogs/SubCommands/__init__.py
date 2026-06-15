@@ -15,7 +15,7 @@ class Groups(commands.Cog, name="Sub Commands", description="A simple test group
         """Executed when running the parent command alone."""
         await ctx.send("This is the first command layer")
 
-    @first.group(invoke_without_command=True)
+    @first.command(invoke_without_command=True)
     async def second(
         self, ctx: commands.Context, channel: discord.TextChannel | None = None
     ) -> None:
