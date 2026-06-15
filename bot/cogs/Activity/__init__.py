@@ -31,19 +31,7 @@ NOTE ON APPLICATION IDS:
 import discord
 from discord import app_commands
 from discord.ext import commands
-
-# name -> (application_id, emoji, min_boost_level, description)
-_ACTIVITIES: dict[str, tuple[int, str, int, str]] = {
-    "Watch Together":     (880218394199220334, "📺", 0, "Watch YouTube videos together."),
-    "Sketch Heads":       (902271654783242291, "✏️", 0, "Draw and guess, skribbl.io-style."),
-    "Word Snacks":        (879863976006127627, "🔤", 0, "Multiplayer word-search game."),
-    "Chess in the Park":  (832012774040141894, "♟️", 1, "Classic chess with friends."),
-    "Checkers in the Park": (832013003968348200, "🔴", 1, "Checkers, but more kings."),
-    "Letter League":      (879863686565621790, "📝", 1, "Crossword-style word game."),
-    "Putt Party":         (945737671223947305, "⛳", 0, "Mini-golf mayhem."),
-    "Blazing 8s":         (832025144389533716, "🃏", 1, "Crazy Eights-style card game."),
-}
-
+from util.constants import Activities
 
 class JoinActivityView(discord.ui.View):
     """A single link-style button pointing to the activity invite."""
@@ -73,7 +61,7 @@ class Activity(commands.Cog, description="Start Discord voice-channel activities
     @app_commands.choices(
         activity=[
             app_commands.Choice(name=f"{emoji} {name}", value=name)
-            for name, (_, emoji, _, _) in _ACTIVITIES.items()
+            for name, (_, emoji, _, _) in Activities._ACTIVITIES.items()
         ]
     )
     @app_commands.checks.has_permissions(use_embedded_activities=True)
@@ -86,7 +74,7 @@ class Activity(commands.Cog, description="Start Discord voice-channel activities
         channel: discord.VoiceChannel,
         activity: app_commands.Choice[str],
     ) -> None:
-        app_id, emoji, min_boost, desc = _ACTIVITIES[activity.value]
+        app_id, emoji, min_boost, desc = Activities._ACTIVITIES[activity.value]
 
         assert interaction.guild is not None
         if interaction.guild.premium_tier < min_boost:

@@ -108,31 +108,30 @@ MAX_HISTORY = 5    # past evaluations kept and displayed in the embed
 # ─────────────────────────────────────────────────────────────────────────────
 
 _CALC_SELECT_OPTIONS: list[discord.SelectOption] = [
-
     # ── Trigonometric functions ────────────────────────────────────────────
     discord.SelectOption(
-        label="sin  (Sine)",        value="sin(",
+        label="sin  (Sine)", value="sin(",
         description="sin(x) — sine in the active angle mode",
     ),
     discord.SelectOption(
-        label="cos  (Cosine)",      value="cos(",
+        label="cos  (Cosine)", value="cos(",
         description="cos(x) — cosine in the active angle mode",
     ),
     discord.SelectOption(
-        label="tan  (Tangent)",     value="tan(",
+        label="tan  (Tangent)", value="tan(",
         description="tan(x) — tangent in the active angle mode",
     ),
     discord.SelectOption(
-        label="sin⁻¹  (Arcsine)",  value="sin⁻¹(",
-        description="Angle whose sine = x  (result in active mode units)",
+        label="sin⁻¹  (Arcsine)", value="sin⁻¹(",
+        description="Angle whose sine = x (result in active mode units)",
     ),
     discord.SelectOption(
         label="cos⁻¹  (Arccosine)", value="cos⁻¹(",
-        description="Angle whose cosine = x  (result in active mode units)",
+        description="Angle whose cosine = x (result in active mode units)",
     ),
     discord.SelectOption(
         label="tan⁻¹  (Arctangent)", value="tan⁻¹(",
-        description="Angle whose tangent = x  (result in active mode units)",
+        description="Angle whose tangent = x (result in active mode units)",
     ),
 
     # ── Logarithms & exponential ──────────────────────────────────────────
@@ -176,7 +175,19 @@ _CALC_SELECT_OPTIONS: list[discord.SelectOption] = [
         label="ceil  (Round up)", value="ceil(",
         description="ceil(x) — smallest integer ≥ x",
     ),
+    discord.SelectOption(
+        label="round  (Standard round)", value="round(",
+        description="round(x) or round(x, digits) — rounds to nearest integer/decimal",
+    ),
 
+    # ── PAGE FLIP NAVIGATION SENTINEL ──────────────────────────────────────
+    discord.SelectOption(
+        label="➡️ Switch to Tools & Constants Menu", value="__page_tools__",
+        description="View combinatorics, algebra operators, constants, and utilities",
+    ),
+]
+
+_TOOLS_CONSTANTS_OPTIONS: list[discord.SelectOption] = [
     # ── Combinatorics ─────────────────────────────────────────────────────
     discord.SelectOption(
         label="nCr  (Combinations)", value="nCr(",
@@ -188,17 +199,29 @@ _CALC_SELECT_OPTIONS: list[discord.SelectOption] = [
     ),
     discord.SelectOption(
         label="!  (Factorial)", value="!",
-        description="Appends ! to the current number, e.g. enter 5 then pick this",
+        description="Appends postfix factorial (!) operator to your value",
     ),
 
-    # ── Integer math ──────────────────────────────────────────────────────
+    # ── Integer math & Extra Operators ────────────────────────────────────
     discord.SelectOption(
-        label="gcd  (Greatest common divisor)", value="gcd(",
+        label="gcd  (Greatest Common Divisor)", value="gcd(",
         description="gcd(a, b)",
     ),
     discord.SelectOption(
-        label="lcm  (Least common multiple)", value="lcm(",
+        label="lcm  (Least Common Multiple)", value="lcm(",
         description="lcm(a, b)",
+    ),
+    discord.SelectOption(
+        label="^  (Power / Exponent)", value="^",
+        description="Raises base to a power, e.g. 2^10",
+    ),
+    discord.SelectOption(
+        label="%  (Modulo / Remainder)", value="%",
+        description="Returns the remainder of integer division, e.g. 10 % 3",
+    ),
+    discord.SelectOption(
+        label="//  (Integer Division)", value="//",
+        description="Divides and truncates the decimal part, e.g. 7 // 2 = 3",
     ),
 
     # ── Constants ─────────────────────────────────────────────────────────
@@ -210,14 +233,18 @@ _CALC_SELECT_OPTIONS: list[discord.SelectOption] = [
         label="e  (Euler's number ≈ 2.71828…)", value="e",
         description="Base of the natural logarithm",
     ),
-
-    # ── Bracket ───────────────────────────────────────────────────────────
     discord.SelectOption(
-        label=")  (Close bracket)", value=")",
-        description="Closing parenthesis — use after the ANS button moves ) here",
+        label="τ  (Tau ≈ 6.28318…)", value="τ",
+        description="Circumference-to-radius ratio (equal to 2π)",
     ),
 
-    # ── Utility ───────────────────────────────────────────────────────────
+    # ── Extra Symbols ─────────────────────────────────────────────────────
+    discord.SelectOption(
+        label=",  (Comma delimiter)", value=",",
+        description="Separates arguments inside functions like nCr(10, 3)",
+    ),
+
+    # ── System Utilities ──────────────────────────────────────────────────
     discord.SelectOption(
         label="⟳ Toggle DEG ↔ RAD", value="__mode__",
         description="Switch trig angle unit between Degrees and Radians",
@@ -226,12 +253,18 @@ _CALC_SELECT_OPTIONS: list[discord.SelectOption] = [
         label="📝 Type full expression…", value="__type__",
         description="Open a text box to type or paste any expression",
     ),
-]
 
+    # ── PAGE FLIP NAVIGATION SENTINEL ──────────────────────────────────────
+    discord.SelectOption(
+        label="⬅️ Switch to Advanced Functions Menu", value="__page_math__",
+        description="View trigonometric, logarithms, roots, and rounding operations",
+    ),
+]
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Modal
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class ExpressionModal(discord.ui.Modal, title="Enter expression"):
     """
@@ -287,7 +320,7 @@ class CalculatorSelect(discord.ui.Select):
     def __init__(self, view: CalculatorView) -> None:
         self.view_ref = view
         super().__init__(
-            placeholder="ƒ(x)  —  functions  ·  constants  ·  tools",
+            placeholder="ƒ(x)  —  Advanced Functions Menu",
             options=_CALC_SELECT_OPTIONS,
             row=0,
         )
@@ -295,12 +328,24 @@ class CalculatorSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction) -> None:
         token = self.values[0]
 
-        # ── Sentinel: open the expression modal ───────────────────────────
+        # ── Handle Page Transitions ───────────────────────────────────────────
+        if token == "__page_tools__":
+            self.options = _TOOLS_CONSTANTS_OPTIONS
+            self.placeholder = "⚙️  —  Tools & Constants Menu"
+            await self.view_ref.refresh(interaction)
+            return
+
+        if token == "__page_math__":
+            self.options = _CALC_SELECT_OPTIONS
+            self.placeholder = "ƒ(x)  —  Advanced Functions Menu"
+            await self.view_ref.refresh(interaction)
+            return
+
+        # ── Handle Core System Sentinels ──────────────────────────────────────
         if token == "__type__":
             await interaction.response.send_modal(ExpressionModal(self.view_ref))
             return
 
-        # ── Sentinel: toggle DEG / RAD mode ──────────────────────────────
         if token == "__mode__":
             self.view_ref.angle_mode = (
                 "rad" if self.view_ref.angle_mode == "deg" else "deg"
@@ -308,15 +353,15 @@ class CalculatorSelect(discord.ui.Select):
             await self.view_ref.refresh(interaction)
             return
 
-        # ── Default: append token to expression ───────────────────────────
+        # ── Standard Token Injection ──────────────────────────────────────────
         self.view_ref.error = None
         self.view_ref.expr += token
         await self.view_ref.refresh(interaction)
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Main view
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class CalculatorView(discord.ui.View):
     """
@@ -339,10 +384,10 @@ class CalculatorView(discord.ui.View):
     Component budget  (21 of 25 slots used)
     ────────────────────────────────────────
     Row 0  CalculatorSelect        1
-    Row 1  [7] [8] [9] [÷] [DEL]  5
-    Row 2  [4] [5] [6] [×] [AC]   5
-    Row 3  [1] [2] [3] [ANS] [(]  5
-    Row 4  [0] [.] [+] [−] [=]    5
+    Row 1  [7] [8] [9] [×] [DEL]   5
+    Row 2  [4] [5] [6] [÷] [(]     5
+    Row 3  [1] [2] [3] [+] [-]     5
+    Row 4  [0] [.] [)] [AC] [=]    5
                               ────
                               21 total
     """
@@ -394,6 +439,17 @@ class CalculatorView(discord.ui.View):
         # Status bar
         embed.description = f"**{mode}** mode"
 
+        # Tips field (full-width, below description, above expression/result)
+        embed.add_field(
+            name="\u200b",
+            value="**Calculator tips:**\n\n▸ Use the **ƒ(x) menu** for scientific functions, constants, and tools like the `DEG/RAD` toggle and free-form expression entry.\n\n▸ The **ANS** button inserts the last result in one tap, and :heavy_equals_sign: stores the answer and resets the input display, matching real Casio behaviour.\n\n▸ Errors show a description and a :bulb:",
+            inline=False,
+        )
+        embed.add_field(
+            name="\u200b",
+            value=":bulb: **Remember:**\n\n1) **Use ƒ(x) menu to access** `Type Full Expression` (Please ➡️ Switch to Tools & Constants Menu before using) **for free-form input**\n\n2) **AC clears**\n",
+            inline=False,
+        )
         # Expression + result/error
         embed.add_field(
             name="Expression",
@@ -431,17 +487,7 @@ class CalculatorView(discord.ui.View):
                 value="\n".join(lines),
                 inline=False,
             )
-        
-        embed.add_field(
-            name="\u200b",
-            value="**Calculator tips:**\n\n▸ Use the **ƒ(x) menu** for scientific functions, constants, and tools like the `DEG/RAD` toggle and free-form expression entry.\n\n▸ The **ANS** button inserts the last result in one tap, and :heavy_equals_sign: stores the answer and resets the input display, matching real Casio behaviour.\n\n▸ Errors show a description and a :bulb:",
-            inline=False,
-        )
-        embed.add_field(
-            name="\u200b",
-            value=":bulb: **Remember:**\n\n1) **Use ƒ(x) menu to access** `Type Full Expression` **for free-form input**\n\n2) **AC clears**\n",
-            inline=False,
-        )
+
         embed.set_footer(
             text=(f"{mode} trig active"),
             icon_url="https://cdn.discordapp.com/emojis/1514827759577464943.gif"
@@ -463,7 +509,7 @@ class CalculatorView(discord.ui.View):
         self.expr += token
         await self.refresh(interaction)
 
-    # ── Row 1 — 7  8  9  ÷  DEL ──────────────────────────────────────────────
+    # ── Row 1 — 7  8  9 × ÷  DEL ──────────────────────────────────────────────
 
     @discord.ui.button(label="7", style=discord.ButtonStyle.primary, row=1)
     async def b7(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
@@ -477,9 +523,9 @@ class CalculatorView(discord.ui.View):
     async def b9(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await self._append(interaction, "9")
 
-    @discord.ui.button(label="÷", style=discord.ButtonStyle.secondary, row=1)
-    async def div_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        await self._append(interaction, "/")
+    @discord.ui.button(label="×", style=discord.ButtonStyle.secondary, row=1)
+    async def mul_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self._append(interaction, "*")
 
     @discord.ui.button(label="DEL", style=discord.ButtonStyle.danger, row=1)
     async def del_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
@@ -488,7 +534,7 @@ class CalculatorView(discord.ui.View):
         self.expr = self.expr[:-1]
         await self.refresh(interaction)
 
-    # ── Row 2 — 4  5  6  ×  AC ───────────────────────────────────────────────
+    # ── Row 2 —  4  5  6 + - AC ───────────────────────────────────────────────
 
     @discord.ui.button(label="4", style=discord.ButtonStyle.primary, row=2)
     async def b4(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
@@ -502,24 +548,16 @@ class CalculatorView(discord.ui.View):
     async def b6(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await self._append(interaction, "6")
 
-    @discord.ui.button(label="×", style=discord.ButtonStyle.secondary, row=2)
-    async def mul_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        await self._append(interaction, "*")
+    @discord.ui.button(label="÷", style=discord.ButtonStyle.secondary, row=2)
+    async def div_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self._append(interaction, "/")
 
-    @discord.ui.button(label="AC", style=discord.ButtonStyle.danger, row=2)
-    async def ac_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        """
-        All-Clear: wipe the expression and any error.
+    @discord.ui.button(label="(", style=discord.ButtonStyle.secondary, row=2)
+    async def open_paren(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self._append(interaction, "(")
 
-        Deliberately preserves ``ans`` and ``history`` so the user can
-        still reference the last result via Ans and review past work.
-        Matches Casio behaviour (AC ≠ power-off reset).
-        """
-        self.expr = ""
-        self.error = None
-        await self.refresh(interaction)
 
-    # ── Row 3 — 1  2  3  ANS  ( ──────────────────────────────────────────────
+    # ── Row 3 — 1  2  3  ANS  = ──────────────────────────────────────────────
 
     @discord.ui.button(label="1", style=discord.ButtonStyle.primary, row=3)
     async def b1(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
@@ -533,22 +571,15 @@ class CalculatorView(discord.ui.View):
     async def b3(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await self._append(interaction, "3")
 
-    @discord.ui.button(label="ANS", style=discord.ButtonStyle.secondary, row=3)
-    async def ans_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        """
-        Insert the Ans token — the result of the last successful calculation.
+    @discord.ui.button(label="+", style=discord.ButtonStyle.secondary, row=3)
+    async def add_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self._append(interaction, "+")
 
-        Appends the literal token ``ans`` so the engine substitutes the
-        stored float at evaluation time.  This mirrors the physical
-        Casio ANS key and is faster than selecting it from the ƒ(x) menu.
-        """
-        await self._append(interaction, "ans")
+    @discord.ui.button(label="−", style=discord.ButtonStyle.secondary, row=3)
+    async def sub_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self._append(interaction, "-")
 
-    @discord.ui.button(label=")", style=discord.ButtonStyle.secondary, row=3)
-    async def close_paren(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        await self._append(interaction, ")")
-
-    # ── Row 4 — 0  .  +  −  = ────────────────────────────────────────────────
+    # ── Row 4 — 0  . ( ) ────────────────────────────────────────────────
 
     @discord.ui.button(label="0", style=discord.ButtonStyle.primary, row=4)
     async def b0(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
@@ -558,14 +589,24 @@ class CalculatorView(discord.ui.View):
     async def dot_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await self._append(interaction, ".")
 
-    @discord.ui.button(label="+", style=discord.ButtonStyle.secondary, row=4)
-    async def add_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        await self._append(interaction, "+")
+    @discord.ui.button(label=")", style=discord.ButtonStyle.secondary, row=4)
+    async def close_paren(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        await self._append(interaction, ")")
 
-    @discord.ui.button(label="−", style=discord.ButtonStyle.secondary, row=4)
-    async def sub_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        await self._append(interaction, "-")
 
+    @discord.ui.button(label="AC", style=discord.ButtonStyle.danger, row=4)
+    async def ac_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
+        """
+        All-Clear: wipe the expression and any error.
+
+        Deliberately preserves ``ans`` and ``history`` so the user can
+        still reference the last result via Ans and review past work.
+        Matches Casio behaviour (AC ≠ power-off reset).
+        """
+        self.expr = ""
+        self.error = None
+        await self.refresh(interaction)
+        
     @discord.ui.button(label="=", style=discord.ButtonStyle.success, row=4)
     async def eq_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         """
@@ -593,17 +634,15 @@ class CalculatorView(discord.ui.View):
             self.history.append((original, result))
             if len(self.history) > MAX_HISTORY:
                 self.history.pop(0)
-            # Replace expression with bare numeric result (Casio behaviour)
-            self.expr = expr_str(result)
         except CalcError as exc:
             self.error = exc   # preserve full CalcError (message + hint)
 
         await self.refresh(interaction)
 
-
 # ══════════════════════════════════════════════════════════════════════════════
 # Cog
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class Calculator(
     commands.Cog,

@@ -20,6 +20,7 @@ What was CHANGED:
 import discord
 
 __all__ = [
+    "Activities",
     "Client",
     "Colours",
     "Emojis",
@@ -30,6 +31,27 @@ __all__ = [
     "NEGATIVE_REPLIES",
     "POSITIVE_REPLIES",
 ]
+
+
+# ── Discord VC Activities ─────────────────────────────────────────────────────
+# Tuple layout: (application_id, emoji, category_flag, description)
+#   category_flag: 0 = casual / watch, 1 = board or card game
+
+class Activities:
+    """
+    Metadata for Discord voice-channel Activities (VC games / Watch Together).
+    Access the full mapping via Activities._ACTIVITIES.
+    """
+    _ACTIVITIES: dict[str, tuple[int, str, int, str]] = {
+        "Watch Together":       (880218394199220334, "📺", 0, "Watch YouTube videos together."),
+        "Sketch Heads":         (902271654783242291, "✏️", 0, "Draw and guess, skribbl.io-style."),
+        "Word Snacks":          (879863976006127627, "🔤", 0, "Multiplayer word-search game."),
+        "Chess in the Park":    (832012774040141894, "♟️", 1, "Classic chess with friends."),
+        "Checkers in the Park": (832013003968348200, "🔴", 1, "Checkers, but more kings."),
+        "Letter League":        (879863686565621790, "📝", 1, "Crossword-style word game."),
+        "Putt Party":           (945737671223947305, "⛳", 0, "Mini-golf mayhem."),
+        "Blazing 8s":           (832025144389533716, "🃏", 1, "Crazy Eights-style card game."),
+    }
 
 
 # ── Bot metadata ──────────────────────────────────────────────────────────────
@@ -70,53 +92,53 @@ class Client:
 
 class Emojis:
     # ── General ──────────────────────────────────────────────────────────────
-    boxing_glove   = "\U0001F94A"
-    cross_mark     = "\u274C"
-    game_die       = "\U0001F3B2"
-    sunny          = "\u2600\ufe0f"
-    star           = "\u2B50"
+    boxing_glove = "\U0001F94A"
+    cross_mark = "\u274C"
+    game_die = "\U0001F3B2"
+    sunny = "\u2600\ufe0f"
+    star = "\u2B50"
     christmas_tree = "\U0001F384"
-    check          = "\u2611"
-    envelope       = "\U0001F4E8"
-    gear           = ":gear:"
-    trashcan       = "<:dustbin:949602736633167882>"
-    ok_hand        = ":ok_hand:"
-    hand_raised    = "\U0001F64B"
-    upload         = "\U0001f4dd"
-    snekbox        = "\U0001f40d"
-    member_join    = "<:member_join:942985122846752798>"
-    repeat         = "🔁"
-    warning        = "\u26A0\uFE0F"
+    check = "\u2611"
+    envelope = "\U0001F4E8"
+    gear = ":gear:"
+    trashcan = "<:dustbin:949602736633167882>"
+    ok_hand = ":ok_hand:"
+    hand_raised = "\U0001F64B"
+    upload = "\U0001f4dd"
+    snekbox = "\U0001f40d"
+    member_join = "<:member_join:942985122846752798>"
+    repeat = "🔁"
+    warning = "\u26A0\uFE0F"
 
     # ── Giveaway ─────────────────────────────────────────────────────────────
-    tada           = "\U0001f389"
-    animated_tada  = "<a:tada2:968745311327649793>"
+    tada = "\U0001f389"
+    animated_tada = "<a:tada2:968745311327649793>"
 
     # ── Top.gg ───────────────────────────────────────────────────────────────
-    topggemoji     = "<:topgg:971639606099464264>"
+    topggemoji = "<:topgg:971639606099464264>"
 
     # ── Pagination ───────────────────────────────────────────────────────────
-    FIRST_EMOJI    = "\u23EE"   # ⏮
-    LEFT_EMOJI     = "\u2B05"   # ⬅
-    RIGHT_EMOJI    = "\u27A1"   # ➡
-    LAST_EMOJI     = "\u23ED"   # ⏭
+    FIRST_EMOJI = "\u23EE"   # ⏮
+    LEFT_EMOJI = "\u2B05"   # ⬅
+    RIGHT_EMOJI = "\u27A1"   # ➡
+    LAST_EMOJI = "\u23ED"   # ⏭
 
     # ── Status ───────────────────────────────────────────────────────────────
-    confirmation   = "\u2705"
-    decline        = "\u274c"
-    x              = "\U0001f1fd"
-    o              = "\U0001f1f4"
+    confirmation = "\u2705"
+    decline = "\u274c"
+    x = "\U0001f1fd"
+    o = "\U0001f1f4"
 
     # ── Music player ─────────────────────────────────────────────────────────
-    resume          = "<:emoji_1:900445170103889980>"
-    pause           = "<:emoji_2:900445202899140648>"
-    loop            = "<:emoji_7:900445329982369802>"
+    resume = "<:emoji_1:900445170103889980>"
+    pause = "<:emoji_2:900445202899140648>"
+    loop = "<:emoji_7:900445329982369802>"
     closeConnection = "<a:closeimout:848156958834032650>"
-    mute            = "<:muted:978168504882716702>"
-    halfvolume      = "<:halfvolume:978168377069674526>"
-    fullvolume      = "<:fullvolume:978168177005576283>"
-    shuffle         = "<:shuffle:978188396755320862>"
-    list_emoji      = "📜"
+    mute = "<:muted:978168504882716702>"
+    halfvolume = "<:halfvolume:978168377069674526>"
+    fullvolume = "<:fullvolume:978168177005576283>"
+    shuffle = "<:shuffle:978188396755320862>"
+    list_emoji = "📜"
 
     # ── Number emojis (used by games) ────────────────────────────────────────
     number_emojis: dict[int, str] = {
@@ -130,6 +152,19 @@ class Emojis:
         8: "\u0038\ufe0f\u20e3",
         9: "\u0039\ufe0f\u20e3",
     }
+
+    # ── Animated Emojis ───────────────────────────────────────────────────────────────
+    # For all animated emojis, the format is <a:name:id> where "a" indicates it's animated.
+    animated_yellow = "<a:yellow:1514829678374944859>"
+    spinner = "<a:Spinner:1514829650218450945>"
+    online = "<a:online:1514829611572396234>"
+    idle = "<a:idle:1514829664324414720>"
+    offline = "<a:offline:1514829609126989844>"
+    joyRow = "<a:JoyRow:1514829597370482728>"
+    animated_xd = "<a:Xd:1514829675543662654>"
+    animated_banned = "<a:Banned:1514829491715838062>"
+    hearzrainbow = "<a:herzrainbow:1514829575945977948>"
+    nitro = "<a:nitro:1514825316739190804>"
 
     # ── Wordle letter emojis ──────────────────────────────────────────────────
     # Used by util/game/__init__.py.  Three colour sets × 26 letters = 78 IDs.
@@ -183,9 +218,9 @@ class Emojis:
     }
 
     # ── Social ───────────────────────────────────────────────────────────────
-    discord_emoji = "<:discord:942984508586725417>"
-    youtube_emoji = "<:youtube:942984508976795669>"
-    github_emoji  = "<:github:942984509673066568>"
+    discord_emoji = "<:discord:1514829525668855978>"
+    youtube_emoji = "<a:yt:1514827814736629819>"
+    github_emoji = "<:github:1514827777906446489>"
 
 
 # ── Icon URLs ─────────────────────────────────────────────────────────────────
