@@ -1,6 +1,6 @@
 """Channel cog — advanced channel management inspired by Dyno, ProBot, Arcane & MEE6.
 ────────────────────────────────────────────────────────────────────────────────
-What's new vs the original
+What's new
 ──────────────────────────
   • /channel info          — Rich metadata embed (type, topic, permissions summary).
   • /channel slowmode      — Set / clear slowmode (0 – 21 600 s) with friendly output.

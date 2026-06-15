@@ -88,7 +88,7 @@ class CalcError(Exception):
 
     def __init__(self, message: str, hint: str | None = None) -> None:
         super().__init__(message)
-        self.message: str        = message
+        self.message: str = message
         self.hint:    str | None = hint
 
     def __str__(self) -> str:

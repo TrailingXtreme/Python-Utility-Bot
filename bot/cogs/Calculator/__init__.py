@@ -605,6 +605,7 @@ class CalculatorView(discord.ui.View):
         """
         self.expr = ""
         self.error = None
+        self.ans =0
         await self.refresh(interaction)
         
     @discord.ui.button(label="=", style=discord.ButtonStyle.success, row=4)
