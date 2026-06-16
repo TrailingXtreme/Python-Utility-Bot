@@ -13,7 +13,8 @@ Commands
   /thread slowmode    — Set or clear slowmode (0 – 21 600 s).
   /thread pin         — Toggle the pinned flag on a thread.
   /thread delete      — Delete with an ephemeral Confirm / Cancel button prompt.
-  /thread purge       — Bulk-delete up to 500 messages with optional filters.
+  /thread purge       — Bulk-delete up to 500 messages with optional filters
+                        (shows a confirmation prompt before executing).
   /thread add         — Add a member to a private thread.
   /thread remove      — Remove a member from a private thread.
   /thread members     — Paginated member list (10 per page, ◀ ▶ buttons).
@@ -21,18 +22,22 @@ Commands
   /thread stats       — Detailed statistics, including a live member fetch.
   /thread list        — Browse all threads in a channel via a select menu.
   /thread convert     — Change the thread type (public ↔ private / announcement).
+  /threadstats        — Hybrid: stats for the current thread.
 
 Interactive components
 ──────────────────────
-  RenameModal         — Single TextInput; pre-filled with the current name.
-  CreateThreadModal   — Name + optional opening-message fields.
-  ConfirmDeleteView   — "Delete 🗑️" / "Cancel" ephemeral buttons (30 s timeout).
-  MemberListView      — ◀ page-indicator ▶ pagination (120 s timeout).
-  ManagePanelView     — Lock / Archive / Pin / Rename / Refresh / Close
-                        buttons with live state (180 s timeout).
-  _ThreadSelectMenu   — Select menu showing up to 25 threads per page.
-  ThreadListView      — Hosts _ThreadSelectMenu + optional ◀ / ▶ nav buttons
-                        for channels with more than 25 threads (120 s timeout).
+  RenameModal           — Single TextInput; pre-filled with the current name.
+  ThreadSlowmodeModal   — Validated 0 – 21 600 input; launched from manage panel.
+  CreateThreadModal     — Name + optional opening-message fields.
+  ConfirmDeleteView     — "Delete 🗑️" / "Cancel" ephemeral buttons (30 s timeout).
+  PurgeConfirmView      — Purge / Cancel; executes bulk-delete only on confirm.
+  MemberListView        — ◀ page-indicator ▶ pagination (120 s timeout).
+  ManagePanelView       — Lock / Archive / Pin (row 0) • Rename / Slowmode /
+                          Purge (row 1) • Members / Refresh / Close (row 2)
+                          with live state (180 s timeout).
+  _ThreadSelectMenu     — Select menu showing up to 25 threads per page.
+  ThreadListView        — Hosts _ThreadSelectMenu + optional ◀ / ▶ nav buttons
+                          for channels with more than 25 threads (120 s timeout).
 
 Thread API used
 ───────────────
@@ -194,10 +199,8 @@ class RenameModal(discord.ui.Modal, title="Rename Thread"):
     """Single-field modal — pre-filled with the thread's current name."""
 
     name: discord.ui.TextInput = discord.ui.TextInput(
-        label="New thread name",
-        placeholder="Enter a new name…",
-        min_length=1,
-        max_length=100,
+        label="New thread name", placeholder="Enter a new name…",
+        min_length=1, max_length=100,
     )
 
     def __init__(self, thread: discord.Thread) -> None:
@@ -209,26 +212,52 @@ class RenameModal(discord.ui.Modal, title="Rename Thread"):
         old = self.thread.name
         await self.thread.edit(name=self.name.value)
         await interaction.response.send_message(
-            embed=_ok(f"Renamed **{old}** → **{self.name.value}**."),
-            ephemeral=True,
+            embed=_ok(f"Renamed **{old}** → **{self.name.value}**."), ephemeral=True,
         )
+
+
+class ThreadSlowmodeModal(discord.ui.Modal, title="Set Thread Slowmode"):
+    """Validated slowmode input — launched from the manage panel."""
+
+    seconds: discord.ui.TextInput = discord.ui.TextInput(
+        label="Delay in seconds (0 to disable, max 21 600)",
+        placeholder="e.g. 5", min_length=1, max_length=5,
+    )
+
+    def __init__(self, thread: discord.Thread) -> None:
+        super().__init__()
+        self.thread = thread
+        self.seconds.default = str(thread.slowmode_delay)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        try:
+            val = int(self.seconds.value)
+        except ValueError:
+            await interaction.response.send_message(
+                embed=_err("Please enter a valid integer."), ephemeral=True)
+            return
+        if not 0 <= val <= 21600:
+            await interaction.response.send_message(
+                embed=_err("Value must be between 0 and 21 600."), ephemeral=True)
+            return
+        await self.thread.edit(slowmode_delay=val)
+        msg = (f"Slowmode **disabled** on **{self.thread.name}**."
+               if val == 0
+               else f"Slowmode set to **{_fmt_duration(val)}** on **{self.thread.name}**.")
+        await interaction.response.send_message(embed=_ok(msg), ephemeral=True)
 
 
 class CreateThreadModal(discord.ui.Modal, title="Create Thread"):
     """Name + optional opening-message modal for /thread create."""
 
     thread_name: discord.ui.TextInput = discord.ui.TextInput(
-        label="Thread name",
-        placeholder="Enter a thread name…",
-        min_length=1,
-        max_length=100,
+        label="Thread name", placeholder="Enter a thread name…",
+        min_length=1, max_length=100,
     )
     opening_message: discord.ui.TextInput = discord.ui.TextInput(
         label="Opening message (optional)",
         placeholder="First message to send inside the thread…",
-        style=discord.TextStyle.paragraph,
-        required=False,
-        max_length=2000,
+        style=discord.TextStyle.paragraph, required=False, max_length=2000,
     )
 
     def __init__(
@@ -249,8 +278,7 @@ class CreateThreadModal(discord.ui.Modal, title="Create Thread"):
             if self.message:
                 # Anchor the thread to an existing message (always public)
                 thread = await self.message.create_thread(
-                    name=self.thread_name.value,
-                    auto_archive_duration=1440,
+                    name=self.thread_name.value, auto_archive_duration=1440,
                 )
             else:
                 thread = await self.channel.create_thread(
@@ -303,18 +331,86 @@ class ConfirmDeleteView(discord.ui.View):
         name = self.thread.name
         self.stop()
         await self.thread.delete()
-        await interaction.response.edit_message(
-            embed=_ok(f"Thread **{name}** permanently deleted."), view=None
-        )
+        try:
+            await interaction.response.edit_message(
+                embed=_ok(f"Thread **{name}** permanently deleted."), view=None
+            )
+        except discord.NotFound:
+            # Message was deleted when thread was deleted; try to send a new message
+            try:
+                await interaction.followup.send(
+                    embed=_ok(f"Thread **{name}** permanently deleted."), ephemeral=True
+                )
+            except discord.NotFound:
+                pass  # Interaction expired, nothing we can do
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
     async def cancel(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.stop()
+        try:
+            await interaction.response.edit_message(embed=_ok("Deletion cancelled."), view=None)
+        except discord.NotFound:
+            # Message was somehow deleted; try to send a new message
+            try:
+                await interaction.followup.send(
+                    embed=_ok("Deletion cancelled."), ephemeral=True
+                )
+            except discord.NotFound:
+                pass  # Interaction expired, nothing we can do
+
+    async def on_timeout(self) -> None:
+        self.stop()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class PurgeConfirmView(discord.ui.View):
+    """Ephemeral Purge / Cancel — runs bulk-delete only on confirm."""
+
+    def __init__(
+        self,
+        thread: discord.Thread,
+        amount: int,
+        check,  # Callable[[discord.Message], bool]
+        requester: discord.User | discord.Member,
+        filter_str: str,
+    ) -> None:
+        super().__init__(timeout=30)
+        self.thread = thread
+        self.amount = amount
+        self.check = check
+        self.requester = requester
+        self.filter_str = filter_str
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.requester.id:
+            await interaction.response.send_message(
+                embed=_err("This confirmation is not for you."), ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Purge 🗑", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.stop()
         await interaction.response.edit_message(
-            embed=_ok("Deletion cancelled."), view=None
+            embed=discord.Embed(
+                description="⏳  Purging messages…", colour=discord.Colour.yellow()),
+            view=None,
         )
+        deleted = await self.thread.purge(limit=self.amount, check=self.check, bulk=True)
+        result = _ok(
+            f"Deleted **{len(deleted)}** message(s){self.filter_str} "
+            f"in **{self.thread.name}**.")
+        result.set_footer(text=f"Requested by {self.requester}")
+        await interaction.edit_original_response(embed=result)
+
+    @discord.ui.button(label="Cancel ✖", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.stop()
+        await interaction.response.edit_message(embed=_ok("Purge cancelled."), view=None)
 
     async def on_timeout(self) -> None:
         self.stop()
@@ -360,7 +456,8 @@ class MemberListView(discord.ui.View):
             colour=discord.Colour.blurple(),
             timestamp=datetime.now(timezone.utc),
         )
-        e.set_footer(text=f"{len(self.members)} total member(s) • Page {self.page + 1}/{self.max_page + 1}")
+        e.set_footer(
+            text=f"{len(self.members)} total member(s) • Page {self.page + 1}/{self.max_page + 1}")
         return e
 
     # ── guard ──
@@ -492,22 +589,16 @@ class ThreadListView(discord.ui.View):
             await interaction.response.edit_message(view=self)
 
         prev = discord.ui.Button(
-            label="◀ Prev",
-            style=discord.ButtonStyle.secondary,
-            disabled=self.page == 0,
-            row=1,
+            label="◀ Prev", style=discord.ButtonStyle.secondary,
+            disabled=self.page == 0, row=1,
         )
         lbl = discord.ui.Button(
             label=f"Page {self.page + 1} / {self.total_pages}",
-            style=discord.ButtonStyle.primary,
-            disabled=True,
-            row=1,
+            style=discord.ButtonStyle.primary, disabled=True, row=1,
         )
         nxt = discord.ui.Button(
-            label="Next ▶",
-            style=discord.ButtonStyle.secondary,
-            disabled=self.page >= self.total_pages - 1,
-            row=1,
+            label="Next ▶", style=discord.ButtonStyle.secondary,
+            disabled=self.page >= self.total_pages - 1, row=1,
         )
         prev.callback = _prev
         nxt.callback = _next
@@ -532,7 +623,15 @@ class ThreadListView(discord.ui.View):
 
 class ManagePanelView(discord.ui.View):
     """Interactive management panel with live state:
-    Lock / Archive / Pin (row 0)  •  Rename / Refresh / Close (row 1).
+
+    Row 0  [Lock/Unlock 🔒]  [Archive/Unarchive 📁]  [Pin/Unpin 📌]
+    Row 1  [Rename ✏️]  [Slowmode ⏱]  [Purge 🗑]
+    Row 2  [Members 👥]  [Refresh 🔄]  [Close ✖]
+
+    • Rename / Slowmode → open modals.
+    • Purge → ephemeral PurgeConfirmView.
+    • Members → live fetch + ephemeral MemberListView.
+    • Purge button disabled if requester lacks manage_messages.
     """
 
     def __init__(
@@ -543,6 +642,9 @@ class ManagePanelView(discord.ui.View):
         super().__init__(timeout=180)
         self.thread = thread
         self.requester = requester
+        if isinstance(requester, discord.Member):
+            if not requester.guild_permissions.manage_messages:
+                self.purge_btn.disabled = True
         self._sync()
 
     # ── helpers ──
@@ -586,9 +688,10 @@ class ManagePanelView(discord.ui.View):
         )
         embed.add_field(name="≈ Messages", value=str(t.message_count))
         embed.add_field(name="≈ Members", value=str(t.member_count))
-        embed.set_footer(
-            text="Rename opens a modal.  •  Refresh re-syncs state from Discord."
-        )
+        embed.set_footer(text=(
+            "Rename / Slowmode open modals.  •  "
+            "Purge has a confirmation window.  •  Refresh re-syncs state from Discord."
+        ))
         return embed
 
     def _fresh(self, interaction: discord.Interaction) -> discord.Thread | None:
@@ -605,7 +708,7 @@ class ManagePanelView(discord.ui.View):
             return False
         return True
 
-    # ── row 0: state toggles ──
+    # ── Row 0: state toggles ──────────────────────────────────────────────────
 
     @discord.ui.button(label="Lock 🔒", style=discord.ButtonStyle.danger, row=0)
     async def toggle_lock(
@@ -648,7 +751,7 @@ class ManagePanelView(discord.ui.View):
                 embed=_err(f"Could not toggle pin: {exc.text}"), ephemeral=True
             )
 
-    # ── row 1: utility buttons ──
+    # ── Row 1: modal and confirm actions ─────────────────────────────────────
 
     @discord.ui.button(label="Rename ✏️", style=discord.ButtonStyle.secondary, row=1)
     async def rename_btn(
@@ -657,7 +760,55 @@ class ManagePanelView(discord.ui.View):
         # Modal response; click Refresh afterwards to see the new name.
         await interaction.response.send_modal(RenameModal(self.thread))
 
-    @discord.ui.button(label="Refresh 🔄", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Slowmode ⏱", style=discord.ButtonStyle.secondary, row=1)
+    async def slowmode_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.send_modal(ThreadSlowmodeModal(self.thread))
+
+    @discord.ui.button(label="Purge 🗑", style=discord.ButtonStyle.danger, row=1)
+    async def purge_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        confirm_embed = discord.Embed(
+            title="⚠️  Confirm Purge",
+            description=(
+                f"About to scan up to **{PURGE_LIMIT}** message(s) "
+                f"in **{self.thread.name}**.\n\nThis **cannot be undone**. Proceed?"
+            ),
+            colour=discord.Colour.yellow(),
+            timestamp=datetime.now(timezone.utc),
+        )
+
+        def _check(m: discord.Message) -> bool:
+            return True  # panel purge has no filters — wipe all
+
+        await interaction.response.send_message(
+            embed=confirm_embed,
+            view=PurgeConfirmView(
+                self.thread, PURGE_LIMIT, _check, interaction.user, ""),
+            ephemeral=True,
+        )
+
+    # ── Row 2: utility ────────────────────────────────────────────────────────
+
+    @discord.ui.button(label="Members 👥", style=discord.ButtonStyle.secondary, row=2)
+    async def members_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+        members = await self.thread.fetch_members()
+        if not members:
+            await interaction.followup.send(
+                embed=_err("No members found in this thread."), ephemeral=True
+            )
+            return
+        view = MemberListView(self.thread, members, interaction.user)
+        await interaction.followup.send(
+            embed=view.build_embed(), view=view, ephemeral=True
+        )
+
+    @discord.ui.button(label="Refresh 🔄", style=discord.ButtonStyle.secondary, row=2)
     async def refresh_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -666,7 +817,7 @@ class ManagePanelView(discord.ui.View):
         self._sync()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="Close ✖", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Close ✖", style=discord.ButtonStyle.secondary, row=2)
     async def close_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -709,7 +860,6 @@ class Threads(
             msg = f"I need the {perms} permission(s) to do that."
         else:
             raise error  # bubble up unexpected errors
-
         if interaction.response.is_done():
             await interaction.followup.send(embed=_err(msg), ephemeral=True)
         else:
@@ -729,11 +879,54 @@ class Threads(
             return interaction.channel
         return None
 
+    # ── /threadstats ─────────────────────────────────────────────────────────
+
+    @commands.hybrid_command(
+        name="threadstats", aliases=["ts"],
+        description="Show stats for the current thread.",
+    )
+    async def threadstats(self, ctx: commands.Context) -> None:
+        if not isinstance(ctx.channel, discord.Thread):
+            await ctx.send(embed=_err("Run this command inside a thread."), ephemeral=True)
+            return
+        assert ctx.guild is not None
+        thread = ctx.channel
+        embed = discord.Embed(
+            title=f"🧵 {thread.name}", colour=_colour(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.set_author(name=ctx.guild.name, icon_url=ctx.guild.icon)
+        embed.add_field(name="ID", value=f"`{thread.id}`")
+        embed.add_field(name="Type", value=_thread_type_label(thread))
+        embed.add_field(name="Status", value=_thread_status(thread))
+        embed.add_field(name="Parent", value=f"<#{thread.parent_id}>")
+        embed.add_field(
+            name="Owner",
+            value=f"<@{thread.owner_id}>" if thread.owner_id else "*Unknown*",
+        )
+        embed.add_field(
+            name="Slowmode",
+            value=_fmt_duration(thread.slowmode_delay) if thread.slowmode_delay else "Off",
+        )
+        embed.add_field(
+            name="Auto-archive After",
+            value=_fmt_auto_archive(thread.auto_archive_duration),
+        )
+        embed.add_field(name="≈ Messages", value=str(thread.message_count))
+        embed.add_field(name="≈ Members", value=str(thread.member_count))
+        if thread.created_at:
+            embed.add_field(
+                name="Created",
+                value=discord.utils.format_dt(thread.created_at, "F"), inline=False,
+            )
+            embed.add_field(name="Age", value=discord.utils.format_dt(thread.created_at, "R"))
+        embed.set_footer(text=f"Requested by {ctx.author}")
+        await ctx.send(embed=embed)
+
     # ── /thread info ──────────────────────────────────────────────────────────
 
     @thread_group.command(
-        name="info",
-        description="Detailed info embed about any thread.",
+        name="info", description="Detailed info embed about any thread.",
     )
     @app_commands.describe(thread="Thread to inspect (defaults to current if inside one)")
     async def thread_info(
@@ -816,8 +1009,7 @@ class Threads(
     # ── /thread archive ───────────────────────────────────────────────────────
 
     @thread_group.command(
-        name="archive",
-        description="Archive a thread, with an optional auto-archive duration.",
+        name="archive", description="Archive a thread, with an optional auto-archive duration.",
     )
     @app_commands.describe(
         thread="Thread to archive (defaults to current)",
@@ -856,10 +1048,7 @@ class Threads(
 
     # ── /thread unarchive ─────────────────────────────────────────────────────
 
-    @thread_group.command(
-        name="unarchive",
-        description="Unarchive / reopen a thread.",
-    )
+    @thread_group.command(name="unarchive", description="Unarchive / reopen a thread.")
     @app_commands.describe(thread="Thread to unarchive")
     @app_commands.checks.has_permissions(manage_threads=True)
     @app_commands.checks.bot_has_permissions(manage_threads=True)
@@ -876,15 +1065,13 @@ class Threads(
             return
         await target.edit(archived=False)
         await interaction.response.send_message(
-            embed=_ok(f"**{target.name}** is now unarchived and active."),
-            ephemeral=True,
+            embed=_ok(f"**{target.name}** is now unarchived and active."), ephemeral=True,
         )
 
     # ── /thread lock ──────────────────────────────────────────────────────────
 
     @thread_group.command(
-        name="lock",
-        description="Lock a thread — only moderators can send messages.",
+        name="lock", description="Lock a thread — only moderators can send messages.",
     )
     @app_commands.describe(
         thread="Thread to lock (defaults to current)",
@@ -922,8 +1109,7 @@ class Threads(
     # ── /thread unlock ────────────────────────────────────────────────────────
 
     @thread_group.command(
-        name="unlock",
-        description="Unlock a thread and post an in-thread notice.",
+        name="unlock", description="Unlock a thread and post an in-thread notice.",
     )
     @app_commands.describe(
         thread="Thread to unlock (defaults to current)",
@@ -1012,10 +1198,7 @@ class Threads(
 
     # ── /thread pin ───────────────────────────────────────────────────────────
 
-    @thread_group.command(
-        name="pin",
-        description="Toggle the pinned flag on a thread.",
-    )
+    @thread_group.command(name="pin", description="Toggle the pinned flag on a thread.")
     @app_commands.describe(thread="Thread to pin / unpin (defaults to current)")
     @app_commands.checks.has_permissions(manage_threads=True)
     @app_commands.checks.bot_has_permissions(manage_threads=True)
@@ -1078,7 +1261,7 @@ class Threads(
 
     @thread_group.command(
         name="purge",
-        description=f"Bulk-delete up to {PURGE_LIMIT} messages in a thread with optional filters.",
+        description=f"Bulk-delete up to {PURGE_LIMIT} messages in a thread — shows confirmation first.",
     )
     @app_commands.describe(
         amount=f"Number of messages to scan (1 – {PURGE_LIMIT})",
@@ -1109,8 +1292,6 @@ class Threads(
             )
             return
 
-        await interaction.response.defer(ephemeral=True)
-
         def _check(m: discord.Message) -> bool:
             if user and m.author != user:
                 return False
@@ -1123,8 +1304,6 @@ class Threads(
             if embeds_only and not m.embeds:
                 return False
             return True
-
-        deleted = await target.purge(limit=amount, check=_check, bulk=True)
 
         # Describe active filters for the confirmation embed
         filters: list[str] = []
@@ -1140,21 +1319,26 @@ class Threads(
             filters.append("with embeds")
         filter_str = " " + " & ".join(filters) if filters else ""
 
-        result = _ok(
-            f"Deleted **{len(deleted)}** message(s){filter_str} in **{target.name}**."
+        confirm_embed = discord.Embed(
+            title="⚠️  Confirm Purge",
+            description=(
+                f"About to scan **{amount}** message(s){filter_str} "
+                f"in **{target.name}**.\n\nThis **cannot be undone**. Proceed?"
+            ),
+            colour=discord.Colour.yellow(),
+            timestamp=datetime.now(timezone.utc),
         )
-        result.set_footer(text=f"Requested by {interaction.user}")
-        await interaction.followup.send(embed=result, ephemeral=True)
+        await interaction.response.send_message(
+            embed=confirm_embed,
+            view=PurgeConfirmView(target, amount, _check, interaction.user, filter_str),
+            ephemeral=True,
+        )
 
     # ── /thread add ───────────────────────────────────────────────────────────
 
-    @thread_group.command(
-        name="add",
-        description="Add a member to a private thread.",
-    )
+    @thread_group.command(name="add", description="Add a member to a private thread.")
     @app_commands.describe(
-        member="Member to add",
-        thread="Thread to add them to (defaults to current)",
+        member="Member to add", thread="Thread to add them to (defaults to current)",
     )
     @app_commands.checks.has_permissions(manage_threads=True)
     @app_commands.checks.bot_has_permissions(manage_threads=True)
@@ -1172,16 +1356,12 @@ class Threads(
             return
         await target.add_user(member)
         await interaction.response.send_message(
-            embed=_ok(f"Added {member.mention} to **{target.name}**."),
-            ephemeral=True,
+            embed=_ok(f"Added {member.mention} to **{target.name}**."), ephemeral=True,
         )
 
     # ── /thread remove ────────────────────────────────────────────────────────
 
-    @thread_group.command(
-        name="remove",
-        description="Remove a member from a private thread.",
-    )
+    @thread_group.command(name="remove", description="Remove a member from a private thread.")
     @app_commands.describe(
         member="Member to remove",
         thread="Thread to remove them from (defaults to current)",
@@ -1202,15 +1382,13 @@ class Threads(
             return
         await target.remove_user(member)
         await interaction.response.send_message(
-            embed=_ok(f"Removed {member.mention} from **{target.name}**."),
-            ephemeral=True,
+            embed=_ok(f"Removed {member.mention} from **{target.name}**."), ephemeral=True,
         )
 
     # ── /thread members ───────────────────────────────────────────────────────
 
     @thread_group.command(
-        name="members",
-        description="Paginated list of all thread members (10 per page).",
+        name="members", description="Paginated list of all thread members (10 per page).",
     )
     @app_commands.describe(thread="Thread to inspect (defaults to current)")
     @app_commands.checks.has_permissions(manage_threads=True)
@@ -1243,8 +1421,7 @@ class Threads(
     # ── /thread manage ────────────────────────────────────────────────────────
 
     @thread_group.command(
-        name="manage",
-        description="Open the interactive management panel for a thread.",
+        name="manage", description="Open the interactive management panel for a thread.",
     )
     @app_commands.describe(thread="Thread to manage (defaults to current)")
     @app_commands.checks.has_permissions(manage_threads=True)
@@ -1308,24 +1485,14 @@ class Threads(
             name="Auto-archive After",
             value=_fmt_auto_archive(target.auto_archive_duration),
         )
-        embed.add_field(
-            name="Messages (API cap ≈50)",
-            value=str(target.message_count),
-        )
-        embed.add_field(
-            name="Members (fetched live)",
-            value=str(len(members)),
-        )
+        embed.add_field(name="Messages (API cap ≈50)", value=str(target.message_count))
+        embed.add_field(name="Members (fetched live)", value=str(len(members)))
         if target.created_at:
             embed.add_field(
                 name="Created",
-                value=discord.utils.format_dt(target.created_at, "F"),
-                inline=False,
+                value=discord.utils.format_dt(target.created_at, "F"), inline=False,
             )
-            embed.add_field(
-                name="Age",
-                value=discord.utils.format_dt(target.created_at, "R"),
-            )
+            embed.add_field(name="Age", value=discord.utils.format_dt(target.created_at, "R"))
         if target.archive_timestamp:
             embed.add_field(
                 name="Last Archived / Unarchived",
@@ -1379,8 +1546,7 @@ class Threads(
         if not threads:
             suffix = " (including archived)" if include_archived else ""
             await interaction.followup.send(
-                embed=_err(f"No threads found in {parent.mention}{suffix}."),
-                ephemeral=True,
+                embed=_err(f"No threads found in {parent.mention}{suffix}."), ephemeral=True,
             )
             return
 
@@ -1404,8 +1570,7 @@ class Threads(
         description="Change the thread type: public ↔ private, or promote to announcement.",
     )
     @app_commands.describe(
-        new_type="Target thread type",
-        thread="Thread to convert (defaults to current)",
+        new_type="Target thread type", thread="Thread to convert (defaults to current)",
     )
     @app_commands.choices(
         new_type=[

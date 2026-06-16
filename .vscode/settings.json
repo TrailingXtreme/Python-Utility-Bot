@@ -1,4 +1,9 @@
 {
     "python.analysis.autoImportCompletions": true,
-    "python.defaultInterpreterPath": "/workspaces/Python-Utility-Bot/bot/.venv/bin/python"
+    "python.defaultInterpreterPath": "/workspaces/Python-Utility-Bot/bot/.venv/bin/python",
+    "python.testing.pytestArgs": [
+        "bot"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
 }
