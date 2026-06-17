@@ -404,7 +404,7 @@ class _CloneConfirmView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label=f"Clone {Emojis.clipboard}", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="Clone", emoji=Emojis.clipboard, style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         cloned = await self.channel.clone(
@@ -412,7 +412,7 @@ class _CloneConfirmView(discord.ui.View):
         await interaction.response.edit_message(
             embed=_ok(f"Cloned **#{self.channel.name}** → {cloned.mention}."), view=None)
 
-    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         await interaction.response.edit_message(embed=_ok("Clone cancelled."), view=None)
@@ -446,7 +446,7 @@ class PurgeConfirmView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label=f"Purge {Emojis.trashcan}", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Purge", emoji=Emojis.trashcan, style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         await interaction.response.edit_message(
@@ -461,7 +461,7 @@ class PurgeConfirmView(discord.ui.View):
         result.set_footer(text=f"Requested by {self.requester}")
         await interaction.edit_original_response(embed=result)
 
-    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         await interaction.response.edit_message(embed=_ok("Purge cancelled."), view=None)
@@ -565,7 +565,7 @@ class ChannelPermsView(discord.ui.View):
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 3: action buttons (row 2 is occupied by _PermPresetSelect)
-    @discord.ui.button(label=f"Apply {Emojis.confirmation}", style=discord.ButtonStyle.success, row=3)
+    @discord.ui.button(label="Apply", emoji=Emojis.confirmation, style=discord.ButtonStyle.success, row=3)
     async def apply_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -601,7 +601,7 @@ class ChannelPermsView(discord.ui.View):
         )
         self.stop()
 
-    @discord.ui.button(label=f"Clear Overwrites {Emojis.trashcan}", style=discord.ButtonStyle.danger, row=3)
+    @discord.ui.button(label="Clear Overwrites", emoji=Emojis.trashcan, style=discord.ButtonStyle.danger, row=3)
     async def clear_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -622,7 +622,7 @@ class ChannelPermsView(discord.ui.View):
         )
         self.stop()
 
-    @discord.ui.button(label=f"Close {Emojis.close}", style=discord.ButtonStyle.secondary, row=3)
+    @discord.ui.button(label="Close", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=3)
     async def close_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -724,7 +724,7 @@ class ChannelManageView(discord.ui.View):
 
     # ── Row 0: quick state toggles ────────────────────────────────────────────
 
-    @discord.ui.button(label=f"Lock {Emojis.lock}", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="Lock", emoji=Emojis.lock, style=discord.ButtonStyle.danger, row=0)
     async def toggle_lock(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -737,7 +737,7 @@ class ChannelManageView(discord.ui.View):
         self._sync()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label=f"Hide {Emojis.eye}", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="Hide", emoji=Emojis.eye, style=discord.ButtonStyle.secondary, row=0)
     async def hide_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -749,7 +749,7 @@ class ChannelManageView(discord.ui.View):
             self.channel = fresh
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label=f"Unhide {Emojis.eye_speech_bubble}", style=discord.ButtonStyle.success, row=0)
+    @discord.ui.button(label="Unhide", emoji=Emojis.eye_speech_bubble, style=discord.ButtonStyle.success, row=0)
     async def unhide_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -761,7 +761,7 @@ class ChannelManageView(discord.ui.View):
             self.channel = fresh
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label=f"Archive {Emojis.folder}", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label="Archive", emoji=Emojis.folder, style=discord.ButtonStyle.secondary, row=0)
     async def archive_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -776,7 +776,7 @@ class ChannelManageView(discord.ui.View):
         self._sync()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label=f"Enable NSFW {Emojis.nsfw_emoji}", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="Enable NSFW", emoji=Emojis.nsfw_emoji, style=discord.ButtonStyle.danger, row=0)
     async def toggle_nsfw(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -788,25 +788,25 @@ class ChannelManageView(discord.ui.View):
 
     # ── Row 1: modal and confirm actions ─────────────────────────────────────
 
-    @discord.ui.button(label=f"Slowmode {Emojis.timer}", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Slowmode", emoji=Emojis.timer, style=discord.ButtonStyle.secondary, row=1)
     async def slowmode_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await interaction.response.send_modal(ChannelSlowmodeModal(self.channel))
 
-    @discord.ui.button(label=f"Rename {Emojis.pencil}", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Rename", emoji=Emojis.pencil, style=discord.ButtonStyle.secondary, row=1)
     async def rename_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await interaction.response.send_modal(ChannelRenameModal(self.channel))
 
-    @discord.ui.button(label=f"Topic {Emojis.memo}", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Topic", emoji=Emojis.memo, style=discord.ButtonStyle.secondary, row=1)
     async def topic_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await interaction.response.send_modal(ChannelTopicModal(self.channel))
 
-    @discord.ui.button(label=f"Clone {Emojis.clipboard}", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Clone", emoji=Emojis.clipboard, style=discord.ButtonStyle.secondary, row=1)
     async def clone_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -826,7 +826,7 @@ class ChannelManageView(discord.ui.View):
             ephemeral=True,
         )
 
-    @discord.ui.button(label=f"Purge {Emojis.trashcan}", style=discord.ButtonStyle.danger, row=1)
+    @discord.ui.button(label="Purge", emoji=Emojis.trashcan, style=discord.ButtonStyle.danger, row=1)
     async def purge_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -835,7 +835,7 @@ class ChannelManageView(discord.ui.View):
 
     # ── Row 2: utility ────────────────────────────────────────────────────────
 
-    @discord.ui.button(label=f"Permissions {Emojis.shield}", style=discord.ButtonStyle.primary, row=2)
+    @discord.ui.button(label="Permissions", emoji=Emojis.shield, style=discord.ButtonStyle.primary, row=2)
     async def perms_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -843,7 +843,7 @@ class ChannelManageView(discord.ui.View):
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
 
-    @discord.ui.button(label=f"Refresh {Emojis.refresh}", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="Refresh", emoji=Emojis.refresh, style=discord.ButtonStyle.secondary, row=2)
     async def refresh_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -852,7 +852,7 @@ class ChannelManageView(discord.ui.View):
         self._sync()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label=f"Close {Emojis.close}", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="Close", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=2)
     async def close_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -919,7 +919,7 @@ class _HideUnhideView(discord.ui.View):
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 1: action buttons
-    @discord.ui.button(label=f"Apply {Emojis.confirmation}", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label="Apply", emoji=Emojis.confirmation, style=discord.ButtonStyle.success, row=1)
     async def apply_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -946,7 +946,7 @@ class _HideUnhideView(discord.ui.View):
         )
         self.stop()
 
-    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=1)
     async def cancel_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1017,7 +1017,7 @@ class _LockUnlockView(discord.ui.View):
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 1: action buttons
-    @discord.ui.button(label=f"Apply {Emojis.confirmation}", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label="Apply", emoji=Emojis.confirmation, style=discord.ButtonStyle.success, row=1)
     async def apply_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1044,7 +1044,7 @@ class _LockUnlockView(discord.ui.View):
         )
         self.stop()
 
-    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=1)
     async def cancel_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1506,7 +1506,7 @@ class _ChannelCreateView(discord.ui.View):
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 3: action buttons
-    @discord.ui.button(label=f"Create {Emojis.confirmation}", style=discord.ButtonStyle.success, row=3)
+    @discord.ui.button(label="Create", emoji=Emojis.confirmation, style=discord.ButtonStyle.success, row=3)
     async def create_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1562,7 +1562,7 @@ class _ChannelCreateView(discord.ui.View):
         
         self.stop()
 
-    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary, row=3)
+    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=3)
     async def cancel_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1602,7 +1602,7 @@ class _DeleteConfirmView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label=f"Delete {Emojis.trashcan}", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Delete", emoji=Emojis.trashcan, style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         name = self.channel.name
@@ -1625,7 +1625,7 @@ class _DeleteConfirmView(discord.ui.View):
         msg += "."
         await interaction.response.edit_message(embed=_ok(msg), view=None)
 
-    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         await interaction.response.edit_message(embed=_ok("Delete cancelled."), view=None)
@@ -1694,7 +1694,7 @@ class _ChannelDeleteView(discord.ui.View):
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 1: action buttons
-    @discord.ui.button(label=f"Delete {Emojis.trashcan}", style=discord.ButtonStyle.danger, row=1)
+    @discord.ui.button(label="Delete", emoji=Emojis.trashcan, style=discord.ButtonStyle.danger, row=1)
     async def delete_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1723,7 +1723,7 @@ class _ChannelDeleteView(discord.ui.View):
             ephemeral=True,
         )
 
-    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=1)
     async def cancel_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:

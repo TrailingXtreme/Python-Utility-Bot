@@ -87,6 +87,7 @@ import discord
 from discord.ext import commands
 
 from util.calculator import CalcError, evaluate, expr_str, format_result
+from util.constants import Emojis
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -442,23 +443,23 @@ class CalculatorView(discord.ui.View):
         # Tips field (full-width, below description, above expression/result)
         embed.add_field(
             name="\u200b",
-            value="**Calculator tips:**\n\n▸ Use the **ƒ(x) menu** for scientific functions, constants, and tools like the `DEG/RAD` toggle and free-form expression entry.\n\n▸ The **ANS** button inserts the last result in one tap, and :heavy_equals_sign: stores the answer and resets the input display, matching real Casio behaviour.\n\n▸ Errors show a description and a :bulb:",
+            value=f"{Emojis.heartdiamond} **Calculator tips:**\n\n{Emojis._right_1}  Use the **ƒ(x) menu** for scientific functions, constants, and tools like the `DEG/RAD` toggle and free-form expression entry.\n\n{Emojis._right_1}  The **ANS** button inserts the last result in one tap, and :heavy_equals_sign: stores the answer and resets the input display, matching real Casio behaviour.\n\n{Emojis._right_1}  Errors show a description and a :bulb:",
             inline=False,
         )
         embed.add_field(
             name="\u200b",
-            value=":bulb: **Remember:**\n\n1) **Use ƒ(x) menu to access** `Type Full Expression` (Please ➡️ Switch to Tools & Constants Menu before using) **for free-form input**\n\n2) **AC clears**\n",
+            value=f"{Emojis.idea} **Remember:**\n\n{Emojis._right_1}  **Use ƒ(x) menu to access** `Type Full Expression` (Please ➡️ Switch to Tools & Constants Menu before using) **for free-form input**\n\n{Emojis._right_1}  **AC clears**\n\n",
             inline=False,
         )
         # Expression + result/error
         embed.add_field(
-            name="Expression",
+            name=f"{Emojis._animated_left_} Expression",
             value=f"```\n{display}\n```",
             inline=False,
         )
         if self.error:
             embed.add_field(
-                name="⚠️ Error",
+                name=f"{Emojis.warning} Error",
                 value=f"```\n{self.error.message}\n```",
                 inline=True,
             )
@@ -471,7 +472,7 @@ class CalculatorView(discord.ui.View):
                 )
         else:
             embed.add_field(
-                name="Result",
+                name=f"{Emojis._animated_left_} Result",
                 value=f"```\n{format_result(self.ans)}\n```",
                 inline=False,
             )
@@ -490,7 +491,7 @@ class CalculatorView(discord.ui.View):
 
         embed.set_footer(
             text=(f"{mode} trig active"),
-            icon_url="https://cdn.discordapp.com/emojis/1514827759577464943.gif"
+            icon_url="https://cdn.discordapp.com/emojis/1514827759577464943.gif",
         )
         return embed
 
@@ -556,7 +557,6 @@ class CalculatorView(discord.ui.View):
     async def open_paren(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await self._append(interaction, "(")
 
-
     # ── Row 3 — 1  2  3  ANS  = ──────────────────────────────────────────────
 
     @discord.ui.button(label="1", style=discord.ButtonStyle.primary, row=3)
@@ -593,7 +593,6 @@ class CalculatorView(discord.ui.View):
     async def close_paren(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await self._append(interaction, ")")
 
-
     @discord.ui.button(label="AC", style=discord.ButtonStyle.danger, row=4)
     async def ac_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         """
@@ -605,9 +604,9 @@ class CalculatorView(discord.ui.View):
         """
         self.expr = ""
         self.error = None
-        self.ans =0
+        self.ans = 0
         await self.refresh(interaction)
-        
+
     @discord.ui.button(label="=", style=discord.ButtonStyle.success, row=4)
     async def eq_btn(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         """

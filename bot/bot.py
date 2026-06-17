@@ -152,28 +152,38 @@ class DiscordBot(commands.AutoShardedBot):
 
         self.db = Repositories(self.pool)
 
-        # 2. Extension / cog loading ──────────────────────────────────────────
+        # 2. Load application emojis and map them by name for easy access.
+        app_emojis = await self.fetch_application_emojis()
+        emoji_map = {e.name: str(e) for e in app_emojis}
+        # Patch Emojis with resolved strings e.g. "<:dustbin:1234567890>"
+        from util.constants import Emojis
+        for attr in vars(Emojis):
+            if not attr.startswith("_") and attr in emoji_map:
+                setattr(Emojis, attr, emoji_map[attr])
+        log.info("Loaded %d application emojis.", len(app_emojis))
+
+        # 3. Extension / cog loading ──────────────────────────────────────────
         # Phase 5 will port each cog from nextcord to discord.py.
         # Until then, cogs still import nextcord and will fail to load.
         # Failures are caught individually so a single broken cog cannot
         # prevent the rest from loading.
         cwd = Path(__file__).parent
         for path in sorted((cwd / "cogs").iterdir()):
-            if path.is_dir() and (path / "__init__.py").exists():
-                ext = f"cogs.{path.name}"
-            elif path.suffix == ".py" and not path.name.startswith("_"):
-                ext = f"cogs.{path.stem}"
-            else:
-                continue
+                if path.is_dir() and (path / "__init__.py").exists():
+                    ext = f"cogs.{path.name}"
+                elif path.suffix == ".py" and not path.name.startswith("_"):
+                    ext = f"cogs.{path.stem}"
+                else:
+                    continue
 
-            try:
-                await self.load_extension(ext)
-                log.info("Loaded  %s", ext)
-            except Exception as exc:  # noqa: BLE001
-                # Expected until Phase 5 — cogs still use nextcord imports.
-                log.warning("Skipped %s: %s", ext, exc)
+                try:
+                    await self.load_extension(ext)
+                    log.info("Loaded  %s", ext)
+                except Exception as exc:  # noqa: BLE001
+                    # Expected until Phase 5 — cogs still use nextcord imports.
+                    log.warning("Skipped %s: %s", ext, exc)
 
-        # 3. Slash-command tree sync ──────────────────────────────────────────
+        # 4. Slash-command tree sync ──────────────────────────────────────────
         # Debug mode: sync to the dev guild for instant registration (no delay).
         # Production: global sync (Discord propagates within ~1 hour).
         if settings.bot_debug:
@@ -220,7 +230,8 @@ class DiscordBot(commands.AutoShardedBot):
                 await message.author.send(embed=embed)
                 return
         except Exception:
-            pass  # If DB is down, let the message through rather than blocking.
+            # If DB is down, let the message through rather than blocking.
+            pass
 
         # ── Mention-as-prefix: reply when the bot is @mentioned alone ─────────
         if (

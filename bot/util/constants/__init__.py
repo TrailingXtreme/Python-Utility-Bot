@@ -92,70 +92,77 @@ class Client:
 
 class Emojis:
     # ── General ──────────────────────────────────────────────────────────────
-    boxing_glove = "\U0001F94A"
-    cross_mark = "\u274C"
-    game_die = "\U0001F3B2"
-    sunny = "\u2600\ufe0f"
-    star = "\u2B50"
-    christmas_tree = "\U0001F384"
-    check = "\u2611"
-    envelope = "\U0001F4E8"
-    gear = ":gear:"
-    trashcan = "<:dustbin:949602736633167882>"
-    ok_hand = ":ok_hand:"
-    hand_raised = "\U0001F64B"
-    upload = "\U0001f4dd"
-    snekbox = "\U0001f40d"
+    boxing_glove = "🥊"
+    cross_mark = "❌"
+    game_die = "🎲"
+    sunny = "☀️"
+    star = "⭐"
+    christmas_tree = "🎄"
+    check = "☑️"
+    envelope = "📨"
+    gear = "⚙️"
+    trashcan = "<:dustbin:1514824861434908835>"
+    ok_hand = "👌"
+    hand_raised = "🙋"
+    upload = "📝"
+    snekbox = "🐍"
     member_join = "<:member_join:942985122846752798>"
     repeat = "🔁"
-    warning = "\u26A0\uFE0F"
+    idea = "💡"
+    warning = "⚠️"
 
     # ── Channels (added for channel-management cog) ────────────────────────────
-    # Plain unicode for now — swap any of these for your own animated custom
-    # emoji (format "<a:name:id>") whenever you like, the cog just reads
-    # whatever string lives here.
-    lock = "\U0001F512"
-    unlock = "\U0001F513"
-    eye = "\U0001F441\uFE0F"
-    eye_speech_bubble = "\U0001F441\uFE0F\u200D\U0001F5E8\uFE0F"
-    folder = "\U0001F4C1"
-    nsfw_emoji = "\U0001F51E"
-    timer = "\u23F1\uFE0F"
-    pencil = "\u270F\uFE0F"
-    memo = "\U0001F4DD"
-    clipboard = "\U0001F4CB"
-    shield = "\U0001F6E1\uFE0F"
-    refresh = "\U0001F504"
-    close = "\u2716\uFE0F"
-    settings = "\u2699\uFE0F"
-    text_channel = "\U0001F4AC"
-    voice_channel = "\U0001F50A"
-    forum_channel = "\U0001F4E2"
-    stage_channel = "\U0001F3A4"
-    no_entry = "\u26D4"
-    mute_channel = "\U0001F507"
-    book = "\U0001F4D6"
-    tv = "\U0001F4FA"
-    hourglass = "\u23F3"
-
+    lock = "🔒"
+    unlock = "🔓"
+    eye = "👁️"
+    eye_speech_bubble = "👁‍🗨"
+    folder = "📁"
+    nsfw_emoji = "🔞"
+    timer = "⏱️"
+    pencil = "✏️"
+    memo = "📝"
+    clipboard = "📋"
+    shield = "🛡️"
+    mod = "<:mod:1514825058340700220>"
+    refresh = "🔄"
+    close = "✖️"
+    settings = "⚙️"
+    text_channel = "💬"
+    voice_channel = "🔊"
+    forum_channel = "📢"
+    stage_channel = "🎤"
+    no_entry = "⛔"
+    mute_channel = "🔇"
+    book = "📖"
+    tv = "📺"
+    hourglass = "⌛"
+    
+    
     # ── Giveaway ─────────────────────────────────────────────────────────────
-    tada = "\U0001f389"
+    tada = "🎉"
     animated_tada = "<a:tada2:968745311327649793>"
 
     # ── Top.gg ───────────────────────────────────────────────────────────────
     topggemoji = "<:topgg:971639606099464264>"
 
     # ── Pagination ───────────────────────────────────────────────────────────
-    FIRST_EMOJI = "\u23EE"   # ⏮
-    LEFT_EMOJI = "\u2B05"   # ⬅
-    RIGHT_EMOJI = "\u27A1"   # ➡
-    LAST_EMOJI = "\u23ED"   # ⏭
+    FIRST_EMOJI = "⏮️"
+    LEFT_EMOJI = "⬅️"
+    RIGHT_EMOJI = "➡️"
+    LAST_EMOJI = "⏭️"
+
 
     # ── Status ───────────────────────────────────────────────────────────────
-    confirmation = "\u2705"
-    decline = "\u274c"
-    x = "\U0001f1fd"
-    o = "\U0001f1f4"
+    confirmation = "✅"
+    decline = "❌"
+    warning = "⚠️"
+    custom_warning = "<:warning:1514829669478694974>"
+    info = "ℹ️"
+    check_mark = "✅"
+    cross_mark = "❌"
+    question_mark = "❓"
+    x = "🇽"   # 🇽  — used as game piece
+    o = "🇴"   # 🇴  — used as game piece
 
     # ── Music player ─────────────────────────────────────────────────────────
     resume = "<:emoji_1:900445170103889980>"
@@ -168,19 +175,6 @@ class Emojis:
     shuffle = "<:shuffle:978188396755320862>"
     list_emoji = "📜"
 
-    # ── Number emojis (used by games) ────────────────────────────────────────
-    number_emojis: dict[int, str] = {
-        1: "\u0031\ufe0f\u20e3",
-        2: "\u0032\ufe0f\u20e3",
-        3: "\u0033\ufe0f\u20e3",
-        4: "\u0034\ufe0f\u20e3",
-        5: "\u0035\ufe0f\u20e3",
-        6: "\u0036\ufe0f\u20e3",
-        7: "\u0037\ufe0f\u20e3",
-        8: "\u0038\ufe0f\u20e3",
-        9: "\u0039\ufe0f\u20e3",
-    }
-
     # ── Animated Emojis ───────────────────────────────────────────────────────────────
     # For all animated emojis, the format is <a:name:id> where "a" indicates it's animated.
     animated_yellow = "<a:yellow:1514829678374944859>"
@@ -192,7 +186,11 @@ class Emojis:
     animated_xd = "<a:Xd:1514829675543662654>"
     animated_banned = "<a:Banned:1514829491715838062>"
     hearzrainbow = "<a:herzrainbow:1514829575945977948>"
+    heartdiamond = "<a:heartdiamond:1514825309575446570>"
     nitro = "<a:nitro:1514825316739190804>"
+    gf_caution = "<a:gf_caution:1514827775851102240>"
+    _right_1 = "<a:___1:1514827759577464943> "
+    _animated_left_ = "<a:left:1514827784759935086>"
 
     # ── Wordle letter emojis ──────────────────────────────────────────────────
     # Used by util/game/__init__.py.  Three colour sets × 26 letters = 78 IDs.
@@ -319,7 +317,6 @@ class Colours:
         "violet": "0xee82ee", "wheat": "0xf5deb3", "white": "0xffffff",
         "whitesmoke": "0xf5f5f5", "yellow": "0xffff00", "yellowgreen": "0x9acd32",
     }
-
 
     # ── Discord brand / status colours ──────────────────────────────────────
     # Mirrors discord.Colour's built-in named shades, kept here so embeds can
