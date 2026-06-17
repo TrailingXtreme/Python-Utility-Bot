@@ -13,11 +13,9 @@ Commands
   /channel unlock        — Lift lockdown for one or more roles (RoleSelect).
   /channel archive       — Read-only mode (lock + reactions off + optional rename).
   /channel clone         — Clone a channel (confirmation required).
-  /channel purge         — Bulk-delete up to 1 000 msgs (confirmation required).
-  /channel create voice  — Create voice channels.
-  /channel create text   — Create text channels with topic/slowmode/nsfw.
-  /channel create category — Create categories with optional role restriction.
-  /channel delete voice/text/category — Delete channels.
+  /channel purge         — Bulk-delete up to 1,000 msgs (confirmation required).
+  /channel create builder — Interactive creator (text/voice/forum/stage/category).
+  /channel delete builder — Interactive deleter (text/voice/category/forum/stage).
   /channel manage        — Ephemeral 13-button interactive dashboard.
   /channel perms         — Multi-role + multi-member permission overwrite editor.
   /channelstats          — Hybrid: stats for current channel.
@@ -34,6 +32,9 @@ Interactive components
   PurgeConfirmView      — Purge / Cancel; executes bulk-delete on confirm.
   ChannelPermsView      — RoleSelect + UserSelect + preset select + action btns.
   ChannelManageView     — 13-button ephemeral dashboard (180 s timeout).
+  _ChannelCreateView    — Type select + category/role pickers → creation modal.
+  _ChannelDeleteView    — Single ChannelSelect (any type) → _DeleteConfirmView.
+  _DeleteConfirmView    — Delete / Cancel confirm (30 s timeout).
 """
 
 from __future__ import annotations
@@ -46,12 +47,22 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from util.constants import Colours, Emojis
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 PURGE_LIMIT = 1_000
 
 _SKIP = object()  # sentinel: "leave this permission unchanged"
+
+# Status colours pulled from Colours.DISCORD_COLOURS instead of calling
+# discord.Colour.green() / .red() / .yellow() / .blurple() / .dark_grey().
+_SUCCESS_COLOUR = discord.Colour(int(Colours.DISCORD_COLOURS["green"], 16))
+_ERROR_COLOUR = discord.Colour(int(Colours.DISCORD_COLOURS["red"], 16))
+_WARNING_COLOUR = discord.Colour(int(Colours.DISCORD_COLOURS["yellow"], 16))
+_INFO_COLOUR = discord.Colour(int(Colours.DISCORD_COLOURS["blurple"], 16))
+_ARCHIVE_COLOUR = discord.Colour(int(Colours.DISCORD_COLOURS["dark_grey"], 16))
 
 _PERMISSION_PRESETS: dict[str, dict[str, bool | None]] = {
     "lock":          {"send_messages": False},
@@ -71,7 +82,7 @@ _PERMISSION_PRESETS: dict[str, dict[str, bool | None]] = {
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _colour() -> discord.Colour:
-    return discord.Colour(random.randint(0, 0xFFFFFF))
+    return discord.Colour(int(random.choice(list(Colours.HTML5_COLOR_CODES.values())), 16))
 
 
 def _embed(description: str, colour: discord.Colour, *, title: str = "") -> discord.Embed:
@@ -83,11 +94,11 @@ def _embed(description: str, colour: discord.Colour, *, title: str = "") -> disc
 
 
 def _ok(text: str) -> discord.Embed:
-    return _embed(f"✅  {text}", discord.Colour.green())
+    return _embed(f"{Emojis.confirmation}  {text}", _SUCCESS_COLOUR)
 
 
 def _err(text: str) -> discord.Embed:
-    return _embed(f"❌  {text}", discord.Colour.red())
+    return _embed(f"{Emojis.decline}  {text}", _ERROR_COLOUR)
 
 
 def _fmt_duration(seconds: int) -> str:
@@ -247,12 +258,12 @@ class _PurgeAmountModal(discord.ui.Modal, title="Purge Messages"):
         filter_str = " " + " & ".join(filters) if filters else ""
 
         confirm_embed = discord.Embed(
-            title="⚠️  Confirm Purge",
+            title=f"{Emojis.warning}  Confirm Purge",
             description=(
                 f"About to scan **{amt}** message(s){filter_str} "
                 f"in {self.channel.mention}.\n\nThis **cannot be undone**. Proceed?"
             ),
-            colour=discord.Colour.yellow(),
+            colour=_WARNING_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
         await interaction.response.send_message(
@@ -342,25 +353,25 @@ class _PermPresetSelect(discord.ui.Select):
             placeholder="Choose a permission preset…",
             options=[
                 discord.SelectOption(
-                    label="Lock  (deny send_messages)", value="lock", emoji="🔒"),
+                    label="Lock  (deny send_messages)", value="lock", emoji=Emojis.lock),
                 discord.SelectOption(
-                    label="Unlock  (inherit send_messages)", value="unlock", emoji="🔓"),
+                    label="Unlock  (inherit send_messages)", value="unlock", emoji=Emojis.unlock),
                 discord.SelectOption(
-                    label="Hide  (deny view_channel)", value="hide", emoji="👁"),
+                    label="Hide  (deny view_channel)", value="hide", emoji=Emojis.eye),
                 discord.SelectOption(
-                    label="Unhide  (inherit view_channel)", value="unhide", emoji="👁\u200d🗨"),
+                    label="Unhide  (inherit view_channel)", value="unhide", emoji=Emojis.eye_speech_bubble),
                 discord.SelectOption(
-                    label="Read Only  (no send / react / attach)", value="read_only", emoji="📖"),
+                    label="Read Only  (no send / react / attach)", value="read_only", emoji=Emojis.book),
                 discord.SelectOption(
-                    label="Allow All  (view + send + react + attach)", value="allow_all", emoji="✅"),
+                    label="Allow All  (view + send + react + attach)", value="allow_all", emoji=Emojis.confirmation),
                 discord.SelectOption(
-                    label="Mute  (no send + no react)", value="mute", emoji="🔇"),
+                    label="Mute  (no send + no react)", value="mute", emoji=Emojis.mute_channel),
                 discord.SelectOption(
-                    label="Full Restrict  (hide + lock)", value="full_restrict", emoji="⛔"),
+                    label="Full Restrict  (hide + lock)", value="full_restrict", emoji=Emojis.no_entry),
                 discord.SelectOption(
-                    label="Mod Access  (manage_messages + manage_channels)", value="mod_access", emoji="🛡"),
+                    label="Mod Access  (manage_messages + manage_channels)", value="mod_access", emoji=Emojis.shield),
                 discord.SelectOption(
-                    label="Custom…  (opens 5-field modal)", value="custom", emoji="⚙️"),
+                    label="Custom…  (opens 5-field modal)", value="custom", emoji=Emojis.settings),
             ],
             row=2,
         )
@@ -393,7 +404,7 @@ class _CloneConfirmView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="Clone 📋", style=discord.ButtonStyle.success)
+    @discord.ui.button(label=f"Clone {Emojis.clipboard}", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         cloned = await self.channel.clone(
@@ -401,7 +412,7 @@ class _CloneConfirmView(discord.ui.View):
         await interaction.response.edit_message(
             embed=_ok(f"Cloned **#{self.channel.name}** → {cloned.mention}."), view=None)
 
-    @discord.ui.button(label="Cancel ✖", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         await interaction.response.edit_message(embed=_ok("Clone cancelled."), view=None)
@@ -435,12 +446,12 @@ class PurgeConfirmView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="Purge 🗑", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label=f"Purge {Emojis.trashcan}", style=discord.ButtonStyle.danger)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         await interaction.response.edit_message(
             embed=discord.Embed(
-                description="⏳  Purging messages…", colour=discord.Colour.yellow()),
+                description=f"{Emojis.hourglass}  Purging messages…", colour=_WARNING_COLOUR),
             view=None,
         )
         deleted = await self.channel.purge(limit=self.amount, check=self.check, bulk=True)
@@ -450,7 +461,7 @@ class PurgeConfirmView(discord.ui.View):
         result.set_footer(text=f"Requested by {self.requester}")
         await interaction.edit_original_response(embed=result)
 
-    @discord.ui.button(label="Cancel ✖", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         await interaction.response.edit_message(embed=_ok("Purge cancelled."), view=None)
@@ -499,8 +510,8 @@ class ChannelPermsView(discord.ui.View):
         members = [t for t in self.selected_targets if isinstance(
             t, discord.Member)]
         embed = discord.Embed(
-            title=f"🛡️  Permission Editor — #{self.channel.name}",
-            colour=discord.Colour.blurple(),
+            title=f"{Emojis.shield}  Permission Editor — #{self.channel.name}",
+            colour=_INFO_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
         embed.add_field(
@@ -554,7 +565,7 @@ class ChannelPermsView(discord.ui.View):
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 3: action buttons (row 2 is occupied by _PermPresetSelect)
-    @discord.ui.button(label="Apply ✅", style=discord.ButtonStyle.success, row=3)
+    @discord.ui.button(label=f"Apply {Emojis.confirmation}", style=discord.ButtonStyle.success, row=3)
     async def apply_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -590,7 +601,7 @@ class ChannelPermsView(discord.ui.View):
         )
         self.stop()
 
-    @discord.ui.button(label="Clear Overwrites 🗑", style=discord.ButtonStyle.danger, row=3)
+    @discord.ui.button(label=f"Clear Overwrites {Emojis.trashcan}", style=discord.ButtonStyle.danger, row=3)
     async def clear_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -611,7 +622,7 @@ class ChannelPermsView(discord.ui.View):
         )
         self.stop()
 
-    @discord.ui.button(label="Close ✖", style=discord.ButtonStyle.secondary, row=3)
+    @discord.ui.button(label=f"Close {Emojis.close}", style=discord.ButtonStyle.secondary, row=3)
     async def close_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -667,11 +678,11 @@ class ChannelManageView(discord.ui.View):
 
     def _sync(self) -> None:
         locked = self._is_locked()
-        self.toggle_lock.label = "Unlock 🔓" if locked else "Lock 🔒"
+        self.toggle_lock.label = f"Unlock {Emojis.unlock}" if locked else f"Lock {Emojis.lock}"
         self.toggle_lock.style = (
             discord.ButtonStyle.success if locked else discord.ButtonStyle.danger)
         nsfw = self.channel.is_nsfw()
-        self.toggle_nsfw.label = "Disable NSFW ✅" if nsfw else "Enable NSFW 🔞"
+        self.toggle_nsfw.label = f"Disable NSFW {Emojis.confirmation}" if nsfw else f"Enable NSFW {Emojis.nsfw_emoji}"
         self.toggle_nsfw.style = (
             discord.ButtonStyle.secondary if nsfw else discord.ButtonStyle.danger)
 
@@ -684,8 +695,8 @@ class ChannelManageView(discord.ui.View):
     def build_embed(self) -> discord.Embed:
         c = self.channel
         embed = discord.Embed(
-            title=f"⚙️  Channel Management — #{c.name}",
-            colour=discord.Colour.blurple(),
+            title=f"{Emojis.settings}  Channel Management — #{c.name}",
+            colour=_INFO_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
         embed.add_field(name="ID", value=f"`{c.id}`")
@@ -693,11 +704,11 @@ class ChannelManageView(discord.ui.View):
                         value=c.category.name if c.category else "*None*")
         embed.add_field(name="Slowmode",
                         value=_fmt_duration(c.slowmode_delay) if c.slowmode_delay else "Off")
-        embed.add_field(name="NSFW", value="🔞 Yes" if c.is_nsfw() else "No")
+        embed.add_field(name="NSFW", value=f"{Emojis.nsfw_emoji} Yes" if c.is_nsfw() else "No")
         embed.add_field(name="Locked (@everyone)",
-                        value="🔒 Yes" if self._is_locked() else "No")
+                        value=f"{Emojis.lock} Yes" if self._is_locked() else "No")
         embed.add_field(name="Hidden (@everyone)",
-                        value="👁 Yes" if self._is_hidden() else "No")
+                        value=f"{Emojis.eye} Yes" if self._is_hidden() else "No")
         embed.add_field(name="Topic", value=c.topic or "*None*", inline=False)
         embed.set_footer(text=(
             "Slowmode / Rename / Topic / Purge open modals.  •  "
@@ -713,7 +724,7 @@ class ChannelManageView(discord.ui.View):
 
     # ── Row 0: quick state toggles ────────────────────────────────────────────
 
-    @discord.ui.button(label="Lock 🔒", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label=f"Lock {Emojis.lock}", style=discord.ButtonStyle.danger, row=0)
     async def toggle_lock(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -726,7 +737,7 @@ class ChannelManageView(discord.ui.View):
         self._sync()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="Hide 👁", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label=f"Hide {Emojis.eye}", style=discord.ButtonStyle.secondary, row=0)
     async def hide_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -738,7 +749,7 @@ class ChannelManageView(discord.ui.View):
             self.channel = fresh
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="Unhide 👁\u200d🗨", style=discord.ButtonStyle.success, row=0)
+    @discord.ui.button(label=f"Unhide {Emojis.eye_speech_bubble}", style=discord.ButtonStyle.success, row=0)
     async def unhide_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -750,7 +761,7 @@ class ChannelManageView(discord.ui.View):
             self.channel = fresh
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="Archive 📁", style=discord.ButtonStyle.secondary, row=0)
+    @discord.ui.button(label=f"Archive {Emojis.folder}", style=discord.ButtonStyle.secondary, row=0)
     async def archive_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -765,7 +776,7 @@ class ChannelManageView(discord.ui.View):
         self._sync()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="Enable NSFW 🔞", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label=f"Enable NSFW {Emojis.nsfw_emoji}", style=discord.ButtonStyle.danger, row=0)
     async def toggle_nsfw(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -777,36 +788,36 @@ class ChannelManageView(discord.ui.View):
 
     # ── Row 1: modal and confirm actions ─────────────────────────────────────
 
-    @discord.ui.button(label="Slowmode ⏱", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label=f"Slowmode {Emojis.timer}", style=discord.ButtonStyle.secondary, row=1)
     async def slowmode_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await interaction.response.send_modal(ChannelSlowmodeModal(self.channel))
 
-    @discord.ui.button(label="Rename ✏️", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label=f"Rename {Emojis.pencil}", style=discord.ButtonStyle.secondary, row=1)
     async def rename_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await interaction.response.send_modal(ChannelRenameModal(self.channel))
 
-    @discord.ui.button(label="Topic 📝", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label=f"Topic {Emojis.memo}", style=discord.ButtonStyle.secondary, row=1)
     async def topic_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         await interaction.response.send_modal(ChannelTopicModal(self.channel))
 
-    @discord.ui.button(label="Clone 📋", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label=f"Clone {Emojis.clipboard}", style=discord.ButtonStyle.secondary, row=1)
     async def clone_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         new_name = f"copy-of-{self.channel.name}"
         confirm_embed = discord.Embed(
-            title="⚠️  Clone Channel?",
+            title=f"{Emojis.warning}  Clone Channel?",
             description=(
                 f"Create **#{new_name}** as a copy of {self.channel.mention}?\n"
                 "Copies name, topic, slowmode, NSFW flag, category, and overwrites."
             ),
-            colour=discord.Colour.yellow(),
+            colour=_WARNING_COLOUR,
         )
         await interaction.response.send_message(
             embed=confirm_embed,
@@ -815,7 +826,7 @@ class ChannelManageView(discord.ui.View):
             ephemeral=True,
         )
 
-    @discord.ui.button(label="Purge 🗑", style=discord.ButtonStyle.danger, row=1)
+    @discord.ui.button(label=f"Purge {Emojis.trashcan}", style=discord.ButtonStyle.danger, row=1)
     async def purge_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -824,7 +835,7 @@ class ChannelManageView(discord.ui.View):
 
     # ── Row 2: utility ────────────────────────────────────────────────────────
 
-    @discord.ui.button(label="Permissions 🛡", style=discord.ButtonStyle.primary, row=2)
+    @discord.ui.button(label=f"Permissions {Emojis.shield}", style=discord.ButtonStyle.primary, row=2)
     async def perms_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -832,7 +843,7 @@ class ChannelManageView(discord.ui.View):
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
 
-    @discord.ui.button(label="Refresh 🔄", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label=f"Refresh {Emojis.refresh}", style=discord.ButtonStyle.secondary, row=2)
     async def refresh_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -841,7 +852,7 @@ class ChannelManageView(discord.ui.View):
         self._sync()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
-    @discord.ui.button(label="Close ✖", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label=f"Close {Emojis.close}", style=discord.ButtonStyle.secondary, row=2)
     async def close_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -882,8 +893,8 @@ class _HideUnhideView(discord.ui.View):
     def build_embed(self) -> discord.Embed:
         action_label = "Hidden From" if self.action == "hide" else "Unhidden For"
         embed = discord.Embed(
-            title=f"🛡️  {self.action.title()} Channel — #{self.channel.name}",
-            colour=discord.Colour.blurple(),
+            title=f"{Emojis.shield}  {self.action.title()} Channel — #{self.channel.name}",
+            colour=_INFO_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
         embed.add_field(
@@ -908,7 +919,7 @@ class _HideUnhideView(discord.ui.View):
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 1: action buttons
-    @discord.ui.button(label="Apply ✅", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label=f"Apply {Emojis.confirmation}", style=discord.ButtonStyle.success, row=1)
     async def apply_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -935,7 +946,7 @@ class _HideUnhideView(discord.ui.View):
         )
         self.stop()
 
-    @discord.ui.button(label="Cancel ✖", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary, row=1)
     async def cancel_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -978,8 +989,8 @@ class _LockUnlockView(discord.ui.View):
     def build_embed(self) -> discord.Embed:
         action_label = "Locked For" if self.action == "lock" else "Unlocked For"
         embed = discord.Embed(
-            title=f"🛡️  {self.action.title()} Channel — #{self.channel.name}",
-            colour=discord.Colour.blurple(),
+            title=f"{Emojis.shield}  {self.action.title()} Channel — #{self.channel.name}",
+            colour=_INFO_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
         embed.add_field(
@@ -1006,7 +1017,7 @@ class _LockUnlockView(discord.ui.View):
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 1: action buttons
-    @discord.ui.button(label="Apply ✅", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label=f"Apply {Emojis.confirmation}", style=discord.ButtonStyle.success, row=1)
     async def apply_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1033,7 +1044,7 @@ class _LockUnlockView(discord.ui.View):
         )
         self.stop()
 
-    @discord.ui.button(label="Cancel ✖", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary, row=1)
     async def cancel_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1394,15 +1405,15 @@ class _ChannelCreateTypeSelect(discord.ui.Select):
             placeholder="Select channel type…",
             options=[
                 discord.SelectOption(
-                    label="Text Channel", value="text", emoji="💬", description="Create a text channel"),
+                    label="Text Channel", value="text", emoji=Emojis.text_channel, description="Create a text channel"),
                 discord.SelectOption(
-                    label="Voice Channel", value="voice", emoji="🔊", description="Create a voice channel"),
+                    label="Voice Channel", value="voice", emoji=Emojis.voice_channel, description="Create a voice channel"),
                 discord.SelectOption(
-                    label="Forum Channel", value="forum", emoji="📢", description="Create a forum channel"),
+                    label="Forum Channel", value="forum", emoji=Emojis.forum_channel, description="Create a forum channel"),
                 discord.SelectOption(
-                    label="Stage Channel", value="stage", emoji="🎤", description="Create a stage channel"),
+                    label="Stage Channel", value="stage", emoji=Emojis.stage_channel, description="Create a stage channel"),
                 discord.SelectOption(
-                    label="Category", value="category", emoji="📁", description="Create a category"),
+                    label="Category", value="category", emoji=Emojis.folder, description="Create a category"),
             ],
             row=0,
         )
@@ -1449,8 +1460,8 @@ class _ChannelCreateView(discord.ui.View):
 
     def build_embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title="📺 Channel Creator",
-            colour=discord.Colour.blurple(),
+            title=f"{Emojis.tv} Channel Creator",
+            colour=_INFO_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
         embed.add_field(
@@ -1495,7 +1506,7 @@ class _ChannelCreateView(discord.ui.View):
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 3: action buttons
-    @discord.ui.button(label="Create ✅", style=discord.ButtonStyle.success, row=3)
+    @discord.ui.button(label=f"Create {Emojis.confirmation}", style=discord.ButtonStyle.success, row=3)
     async def create_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
@@ -1551,12 +1562,174 @@ class _ChannelCreateView(discord.ui.View):
         
         self.stop()
 
-    @discord.ui.button(label="Cancel ✖", style=discord.ButtonStyle.secondary, row=3)
+    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary, row=3)
     async def cancel_btn(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
         self.stop()
         await interaction.response.edit_message(embed=_ok("Cancelled."), view=None)
+
+
+# ── Channel Deletion Views ────────────────────────────────────────────────────
+
+# Every channel/category type the delete builder is willing to touch.
+_DELETABLE_TYPES: list[discord.ChannelType] = [
+    discord.ChannelType.text,
+    discord.ChannelType.voice,
+    discord.ChannelType.category,
+    discord.ChannelType.news,
+    discord.ChannelType.forum,
+    discord.ChannelType.stage_voice,
+]
+
+
+class _DeleteConfirmView(discord.ui.View):
+    """Ephemeral Delete / Cancel — runs the actual delete only on confirm."""
+
+    def __init__(
+        self,
+        channel: discord.abc.GuildChannel,
+        requester: discord.User | discord.Member,
+    ) -> None:
+        super().__init__(timeout=30)
+        self.channel = channel
+        self.requester = requester
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.requester.id:
+            await interaction.response.send_message(
+                embed=_err("This confirmation is not for you."), ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label=f"Delete {Emojis.trashcan}", style=discord.ButtonStyle.danger)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.stop()
+        name = self.channel.name
+        is_category = isinstance(self.channel, discord.CategoryChannel)
+        held = len(self.channel.channels) if is_category else None
+        try:
+            await self.channel.delete(
+                reason=f"Deleted via channel delete builder by {interaction.user}")
+        except discord.Forbidden:
+            await interaction.response.edit_message(
+                embed=_err("I don't have permission to delete that channel."), view=None)
+            return
+        except discord.HTTPException as e:
+            await interaction.response.edit_message(
+                embed=_err(f"Failed to delete **#{name}**: {e}"), view=None)
+            return
+        msg = f"Deleted **#{name}**"
+        if held is not None:
+            msg += f" ({held} channel(s) removed with it)"
+        msg += "."
+        await interaction.response.edit_message(embed=_ok(msg), view=None)
+
+    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.stop()
+        await interaction.response.edit_message(embed=_ok("Delete cancelled."), view=None)
+
+    async def on_timeout(self) -> None:
+        self.stop()
+
+
+class _ChannelDeleteView(discord.ui.View):
+    """Interactive channel/category deletion builder — one panel instead of
+    separate /channel delete text|voice|category|forum|stage commands.
+
+    Row 0  ChannelSelect  (text / voice / category / announcement / forum / stage)
+    Row 1  [Delete 🗑]  [Cancel ✖]
+
+    Workflow:
+      1. Pick the channel or category to remove from the select menu.
+      2. Click Delete — a confirmation prompt appears before anything is removed.
+    """
+
+    def __init__(
+        self,
+        guild: discord.Guild,
+        requester: discord.User | discord.Member,
+    ) -> None:
+        super().__init__(timeout=180)
+        self.guild = guild
+        self.requester = requester
+        self.selected_channel: discord.abc.GuildChannel | None = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.requester.id:
+            await interaction.response.send_message(
+                embed=_err("This panel is not for you."), ephemeral=True)
+            return False
+        return True
+
+    def build_embed(self) -> discord.Embed:
+        embed = discord.Embed(
+            title=f"{Emojis.trashcan} Channel Deleter",
+            colour=_WARNING_COLOUR,
+            timestamp=datetime.now(timezone.utc),
+        )
+        if self.selected_channel:
+            kind = str(self.selected_channel.type).replace("_", " ").title()
+            value = f"**#{self.selected_channel.name}**  ({kind})"
+            if isinstance(self.selected_channel, discord.CategoryChannel):
+                value += f"\n{len(self.selected_channel.channels)} channel(s) live inside it."
+        else:
+            value = "*None selected*"
+        embed.add_field(name="Target", value=value, inline=False)
+        embed.set_footer(
+            text="1. Pick a channel/category.  2. Click Delete to confirm.")
+        return embed
+
+    # Row 0: channel/category picker (any deletable type)
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
+        placeholder="Select a channel or category to delete…",
+        min_values=1, max_values=1, channel_types=_DELETABLE_TYPES, row=0,
+    )
+    async def channel_select(
+        self, interaction: discord.Interaction, select: discord.ui.ChannelSelect
+    ) -> None:
+        self.selected_channel = select.values[0] if select.values else None
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    # Row 1: action buttons
+    @discord.ui.button(label=f"Delete {Emojis.trashcan}", style=discord.ButtonStyle.danger, row=1)
+    async def delete_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        if not self.selected_channel:
+            await interaction.response.send_message(
+                embed=_err("Select a channel or category first."), ephemeral=True)
+            return
+
+        target = self.selected_channel
+        extra = ""
+        if isinstance(target, discord.CategoryChannel):
+            extra = (f"\n**{len(target.channels)}** channel(s) inside it "
+                     "will be deleted too.")
+        confirm_embed = discord.Embed(
+            title=f"{Emojis.warning}  Confirm Delete",
+            description=(
+                f"Delete **#{target.name}**?{extra}\n\n"
+                "This **cannot be undone**. Proceed?"
+            ),
+            colour=_WARNING_COLOUR,
+            timestamp=datetime.now(timezone.utc),
+        )
+        await interaction.response.send_message(
+            embed=confirm_embed,
+            view=_DeleteConfirmView(target, interaction.user),
+            ephemeral=True,
+        )
+
+    @discord.ui.button(label=f"Cancel {Emojis.close}", style=discord.ButtonStyle.secondary, row=1)
+    async def cancel_btn(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ) -> None:
+        self.stop()
+        await interaction.response.edit_message(embed=_ok("Cancelled."), view=None)
+
 
 # ── Cog ──────────────────────────────────────────────────────────────────────
 
@@ -1565,7 +1738,7 @@ class Channels(
     commands.Cog,
     description="Advanced channel management — like Dyno, ProBot, Arcane & MEE6.",
 ):
-    COG_EMOJI = "📺"
+    COG_EMOJI = Emojis.tv
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -1576,7 +1749,7 @@ class Channels(
         name="create", description="Create categories, text, or voice channels.",
         parent=channel_group)
     delete_group = app_commands.Group(
-        name="delete", description="Delete categories, text, or voice channels.",
+        name="delete", description="Delete a channel or category via the interactive builder.",
         parent=channel_group)
 
     async def cog_app_command_error(
@@ -1679,9 +1852,9 @@ class Channels(
                           if isinstance(r, discord.Role) and ow.send_messages is False]
             hidden_from = [r.name for r, ow in target.overwrites.items()
                            if isinstance(r, discord.Role) and ow.view_channel is False]
-            embed.add_field(name="🔒 Locked For",
+            embed.add_field(name=f"{Emojis.lock} Locked For",
                             value=", ".join(locked_for) or "*Nobody*", inline=False)
-            embed.add_field(name="👁\u200d🗨 Hidden From",
+            embed.add_field(name=f"{Emojis.eye_speech_bubble} Hidden From",
                             value=", ".join(hidden_from) or "*Nobody*")
         elif isinstance(target, discord.VoiceChannel):
             embed.add_field(
@@ -1767,7 +1940,7 @@ class Channels(
         assert isinstance(target, discord.TextChannel)
         new_state = not target.is_nsfw()
         await target.edit(nsfw=new_state)
-        label = "🔞 **enabled**" if new_state else "✅ **disabled**"
+        label = f"{Emojis.nsfw_emoji} **enabled**" if new_state else f"{Emojis.confirmation} **disabled**"
         await interaction.response.send_message(
             embed=_ok(f"NSFW {label} for {target.mention}."), ephemeral=True)
 
@@ -1879,14 +2052,14 @@ class Channels(
         if prefix:
             await target.edit(name=f"{prefix}-{target.name}")
         notice = discord.Embed(
-            title="📁 Channel Archived",
+            title=f"{Emojis.folder} Channel Archived",
             description=(f"This channel has been archived by {interaction.user.mention} "
                          "and is now **read-only**."),
-            colour=discord.Colour.dark_grey(), timestamp=datetime.now(timezone.utc),
+            colour=_ARCHIVE_COLOUR, timestamp=datetime.now(timezone.utc),
         )
         await target.send(embed=notice)
         await interaction.response.send_message(
-            embed=_ok(f"📁 {target.mention} has been archived."), ephemeral=True)
+            embed=_ok(f"{Emojis.folder} {target.mention} has been archived."), ephemeral=True)
 
     # ── /channel clone ────────────────────────────────────────────────────────
 
@@ -1907,12 +2080,12 @@ class Channels(
         assert isinstance(target, (discord.TextChannel, discord.VoiceChannel))
         new_name = name or f"copy-of-{target.name}"
         confirm_embed = discord.Embed(
-            title="⚠️  Clone Channel?",
+            title=f"{Emojis.warning}  Clone Channel?",
             description=(
                 f"Create **#{new_name}** as a copy of {target.mention}?\n"
                 "Copies name, topic, slowmode, NSFW flag, category, and permission overwrites."
             ),
-            colour=discord.Colour.yellow(),
+            colour=_WARNING_COLOUR,
         )
         await interaction.response.send_message(
             embed=confirm_embed,
@@ -1978,12 +2151,12 @@ class Channels(
         filter_str = " " + " & ".join(filters) if filters else ""
 
         confirm_embed = discord.Embed(
-            title="⚠️  Confirm Purge",
+            title=f"{Emojis.warning}  Confirm Purge",
             description=(
                 f"About to scan **{amount}** message(s){filter_str} "
                 f"in {target.mention}.\n\nThis **cannot be undone**. Proceed?"
             ),
-            colour=discord.Colour.yellow(),
+            colour=_WARNING_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
         await interaction.response.send_message(
@@ -2040,160 +2213,19 @@ class Channels(
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
 
-    # ── /channel create category ──────────────────────────────────────────────
 
-    @create_group.command(name="category",
-                          description="Create a new category, optionally visible to a specific role.")
-    @app_commands.describe(name="Category name",
-                           role="Role that can view this category (optional — omit for public)")
+    # ── /channel delete builder ───────────────────────────────────────────────
+
+    @delete_group.command(name="builder",
+                          description="Interactive deleter — pick any text, voice, category, forum or stage channel.")
     @app_commands.checks.has_permissions(manage_channels=True)
     @app_commands.checks.bot_has_permissions(manage_channels=True)
-    async def create_category(
-        self, interaction: discord.Interaction,
-        name: str, role: discord.Role | None = None,
-    ) -> None:
+    async def delete_builder(self, interaction: discord.Interaction) -> None:
+        """Open interactive channel deletion interface."""
         assert interaction.guild is not None
-        overwrites: dict = {}
-        if role:
-            overwrites = {
-                interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                interaction.guild.me: discord.PermissionOverwrite(view_channel=True),
-                role: discord.PermissionOverwrite(view_channel=True),
-            }
-        category = await interaction.guild.create_category(name=name, overwrites=overwrites)
-        msg = f"Created category **{category.name}**"
-        if role:
-            msg += f", visible only to {role.mention}"
-        msg += "."
-        await interaction.response.send_message(embed=_ok(msg), ephemeral=True)
-
-    # ── /channel create text ──────────────────────────────────────────────────
-
-    @create_group.command(name="text",
-                          description="Create a new text channel.")
-    @app_commands.describe(
-        name="Channel name", role="Role that can view this channel (optional)",
-        category="Category to place the channel in (optional)",
-        topic="Channel topic (optional)", slowmode="Slowmode delay in seconds (0 = off)",
-        nsfw="Mark channel as NSFW",
-    )
-    @app_commands.checks.has_permissions(manage_channels=True)
-    @app_commands.checks.bot_has_permissions(manage_channels=True)
-    async def create_text(
-        self, interaction: discord.Interaction,
-        name: str, role: discord.Role | None = None,
-        category: discord.CategoryChannel | None = None,
-        topic: str | None = None,
-        slowmode: app_commands.Range[int, 0, 21600] = 0,
-        nsfw: bool = False,
-    ) -> None:
-        assert interaction.guild is not None
-        overwrites: dict = {}
-        if role:
-            overwrites = {
-                interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                interaction.guild.me: discord.PermissionOverwrite(view_channel=True),
-                role: discord.PermissionOverwrite(view_channel=True),
-            }
-        new_channel = await interaction.guild.create_text_channel(
-            name=name, overwrites=overwrites, category=category,
-            topic=topic, slowmode_delay=slowmode, nsfw=nsfw)
-        msg = f"Created {new_channel.mention}"
-        if role:
-            msg += f", visible to {role.mention}"
-        msg += "."
-        await interaction.response.send_message(embed=_ok(msg), ephemeral=True)
-
-    # ── /channel create voice ─────────────────────────────────────────────────
-
-    @create_group.command(name="voice", description="Create a new voice channel.")
-    @app_commands.describe(
-        name="Channel name", role="Role that can view this channel (optional)",
-        category="Category to place the channel in (optional)",
-        bitrate="Bitrate in kbps (8 – 384, default 64)",
-        user_limit="Max users (0 = unlimited)",
-    )
-    @app_commands.checks.has_permissions(manage_channels=True)
-    @app_commands.checks.bot_has_permissions(manage_channels=True)
-    async def create_voice(
-        self, interaction: discord.Interaction,
-        name: str, role: discord.Role | None = None,
-        category: discord.CategoryChannel | None = None,
-        bitrate: app_commands.Range[int, 8, 384] = 64,
-        user_limit: app_commands.Range[int, 0, 99] = 0,
-    ) -> None:
-        assert interaction.guild is not None
-        overwrites: dict = {}
-        if role:
-            overwrites = {
-                interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                interaction.guild.me: discord.PermissionOverwrite(view_channel=True),
-                role: discord.PermissionOverwrite(view_channel=True),
-            }
-        vc = await interaction.guild.create_voice_channel(
-            name=name, overwrites=overwrites, category=category,
-            bitrate=bitrate * 1000, user_limit=user_limit)
-        msg = f"Created voice channel **{vc.name}**"
-        if role:
-            msg += f", visible to {role.mention}"
-        msg += "."
-        await interaction.response.send_message(embed=_ok(msg), ephemeral=True)
-
-    # ── /channel delete category ──────────────────────────────────────────────
-
-    @delete_group.command(name="category",
-                          description="Delete a category and report how many channels it held.")
-    @app_commands.describe(category="The category to delete", reason="Audit log reason")
-    @app_commands.checks.has_permissions(manage_channels=True)
-    @app_commands.checks.bot_has_permissions(manage_channels=True)
-    async def delete_category(
-        self, interaction: discord.Interaction,
-        category: discord.CategoryChannel,
-        reason: str | None = None,
-    ) -> None:
-        channel_count = len(category.channels)
-        name = category.name
-        await category.delete(reason=reason)
+        view = _ChannelDeleteView(interaction.guild, interaction.user)
         await interaction.response.send_message(
-            embed=_ok(
-                f"Deleted category **{name}** ({channel_count} channel(s) removed with it)."),
-            ephemeral=True)
-
-    # ── /channel delete text ──────────────────────────────────────────────────
-
-    @delete_group.command(name="text", description="Delete a text channel.")
-    @app_commands.describe(channel="Channel to delete (defaults to current)",
-                           reason="Audit log reason")
-    @app_commands.checks.has_permissions(manage_channels=True)
-    @app_commands.checks.bot_has_permissions(manage_channels=True)
-    async def delete_text(
-        self, interaction: discord.Interaction,
-        channel: discord.TextChannel | None = None,
-        reason: str | None = None,
-    ) -> None:
-        target = channel or interaction.channel
-        assert isinstance(target, discord.TextChannel)
-        name = target.name
-        await target.delete(reason=reason)
-        if target.id != interaction.channel_id:
-            await interaction.response.send_message(
-                embed=_ok(f"Deleted **#{name}**."), ephemeral=True)
-
-    # ── /channel delete voice ─────────────────────────────────────────────────
-
-    @delete_group.command(name="voice", description="Delete a voice channel.")
-    @app_commands.describe(channel="Voice channel to delete", reason="Audit log reason")
-    @app_commands.checks.has_permissions(manage_channels=True)
-    @app_commands.checks.bot_has_permissions(manage_channels=True)
-    async def delete_voice(
-        self, interaction: discord.Interaction,
-        channel: discord.VoiceChannel,
-        reason: str | None = None,
-    ) -> None:
-        name = channel.name
-        await channel.delete(reason=reason)
-        await interaction.response.send_message(
-            embed=_ok(f"Deleted voice channel **{name}**."), ephemeral=True)
+            embed=view.build_embed(), view=view, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

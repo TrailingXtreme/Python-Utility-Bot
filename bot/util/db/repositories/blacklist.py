@@ -3,6 +3,8 @@
 import asyncpg
 import discord
 
+from util.db.models import BlacklistedUser
+
 
 class BlacklistRepository:
     def __init__(self, pool: asyncpg.Pool) -> None:
@@ -30,3 +32,10 @@ class BlacklistRepository:
             "DELETE FROM blacklisted_users WHERE user_id = $1", user_id
         )
         return result != "DELETE 0"
+
+    async def list_all(self) -> list[BlacklistedUser]:
+        """Return every blacklisted user, newest first."""
+        rows = await self.pool.fetch(
+            "SELECT * FROM blacklisted_users ORDER BY blacklisted_at DESC"
+        )
+        return [BlacklistedUser.model_validate(dict(r)) for r in rows]

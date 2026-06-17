@@ -94,3 +94,23 @@ class SuggestionRepository:
             message_id, status,
         )
         return Suggestion.model_validate(dict(row))
+
+    async def get_pending(self, guild_id: int) -> list[Suggestion]:
+        """All unreviewed suggestions for a guild — used by autocomplete."""
+        rows = await self.pool.fetch(
+            """
+            SELECT * FROM suggestions
+            WHERE guild_id = $1 AND is_reviewed IS NULL
+            ORDER BY serial_no
+            """,
+            guild_id,
+        )
+        return [Suggestion.model_validate(dict(r)) for r in rows]
+
+    async def get_by_serial(self, guild_id: int, serial_no: int) -> Suggestion | None:
+        """Fetch one suggestion by its human-readable serial number."""
+        row = await self.pool.fetchrow(
+            "SELECT * FROM suggestions WHERE guild_id = $1 AND serial_no = $2",
+            guild_id, serial_no,
+        )
+        return Suggestion.model_validate(dict(row)) if row else None

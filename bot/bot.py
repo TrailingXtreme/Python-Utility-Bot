@@ -98,13 +98,19 @@ class DiscordBot(commands.AutoShardedBot):
     """
 
     pool: asyncpg.Pool  # annotated here; assigned in setup_hook
+    db: Repositories    # assigned immediately after pool
     db: Repositories    # annotated here; assigned in setup_hook
 
     def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.members = True
         intents.message_content = True
+        intents.emojis = True
+        intents.emojis_and_stickers = True
         intents.guilds = True
+        intents.messages = True
+        intents.reactions = True
+        intents.presences = False  # we don't use presence data, so disable it.
 
         super().__init__(
             command_prefix=get_prefix,
@@ -141,7 +147,8 @@ class DiscordBot(commands.AutoShardedBot):
             max_size=10,
             command_timeout=30,
         )
-        log.info("PostgreSQL pool created (%s)", settings.asyncpg_dsn)
+        self.db = Repositories(self.pool)
+        log.info("PostgreSQL pool + repositories ready.")
 
         self.db = Repositories(self.pool)
 

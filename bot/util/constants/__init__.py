@@ -110,6 +110,34 @@ class Emojis:
     repeat = "🔁"
     warning = "\u26A0\uFE0F"
 
+    # ── Channels (added for channel-management cog) ────────────────────────────
+    # Plain unicode for now — swap any of these for your own animated custom
+    # emoji (format "<a:name:id>") whenever you like, the cog just reads
+    # whatever string lives here.
+    lock = "\U0001F512"
+    unlock = "\U0001F513"
+    eye = "\U0001F441\uFE0F"
+    eye_speech_bubble = "\U0001F441\uFE0F\u200D\U0001F5E8\uFE0F"
+    folder = "\U0001F4C1"
+    nsfw_emoji = "\U0001F51E"
+    timer = "\u23F1\uFE0F"
+    pencil = "\u270F\uFE0F"
+    memo = "\U0001F4DD"
+    clipboard = "\U0001F4CB"
+    shield = "\U0001F6E1\uFE0F"
+    refresh = "\U0001F504"
+    close = "\u2716\uFE0F"
+    settings = "\u2699\uFE0F"
+    text_channel = "\U0001F4AC"
+    voice_channel = "\U0001F50A"
+    forum_channel = "\U0001F4E2"
+    stage_channel = "\U0001F3A4"
+    no_entry = "\u26D4"
+    mute_channel = "\U0001F507"
+    book = "\U0001F4D6"
+    tv = "\U0001F4FA"
+    hourglass = "\u23F3"
+
     # ── Giveaway ─────────────────────────────────────────────────────────────
     tada = "\U0001f389"
     animated_tada = "<a:tada2:968745311327649793>"
@@ -290,6 +318,19 @@ class Colours:
         "thistle": "0xd8bfd8", "tomato": "0xff6347", "turquoise": "0x40e0d0",
         "violet": "0xee82ee", "wheat": "0xf5deb3", "white": "0xffffff",
         "whitesmoke": "0xf5f5f5", "yellow": "0xffff00", "yellowgreen": "0x9acd32",
+    }
+
+
+    # ── Discord brand / status colours ──────────────────────────────────────
+    # Mirrors discord.Colour's built-in named shades, kept here so embeds can
+    # reference a constant instead of calling discord.Colour.green() etc.
+    DISCORD_COLOURS: dict[str, str] = {
+        "blurple":   "0x5865f2",
+        "green":     "0x57f287",
+        "yellow":    "0xfee75c",
+        "red":       "0xed4245",
+        "fuchsia":   "0xeb459e",
+        "dark_grey": "0x2c2f33",
     }
 
 
