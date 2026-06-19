@@ -39,6 +39,7 @@ Interactive components
 
 from __future__ import annotations
 
+from calendar import c
 from collections.abc import Callable
 from datetime import datetime, timezone
 import random
@@ -1608,22 +1609,26 @@ class _DeleteConfirmView(discord.ui.View):
         name = self.channel.name
         is_category = isinstance(self.channel, discord.CategoryChannel)
         held = len(self.channel.channels) if is_category else None
-        try:
-            await self.channel.delete(
-                reason=f"Deleted via channel delete builder by {interaction.user}")
-        except discord.Forbidden:
-            await interaction.response.edit_message(
-                embed=_err("I don't have permission to delete that channel."), view=None)
-            return
-        except discord.HTTPException as e:
-            await interaction.response.edit_message(
-                embed=_err(f"Failed to delete **#{name}**: {e}"), view=None)
-            return
-        msg = f"Deleted **#{name}**"
-        if held is not None:
-            msg += f" ({held} channel(s) removed with it)"
-        msg += "."
-        await interaction.response.edit_message(embed=_ok(msg), view=None)
+        if self.channel == interaction.channel:
+            await interaction.response.edit_message(embed=_err("You cannot delete the current channel."), view=None)
+            
+        else:    
+            try:
+                await self.channel.delete(
+                    reason=f"Deleted via channel delete builder by {interaction.user}")
+            except discord.Forbidden:
+                await interaction.response.edit_message(
+                    embed=_err("I don't have permission to delete that channel."), view=None)
+                return
+            except discord.HTTPException as e:
+                await interaction.response.edit_message(
+                    embed=_err(f"Failed to delete **#{name}**: {e}"), view=None)
+                return
+            msg = f"Deleted **#{name}**"
+            if held is not None:
+                msg += f" ({held} channel(s) removed with it)"
+            msg += "."
+            await interaction.response.edit_message(embed=_ok(msg), view=None)
 
     @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -1690,7 +1695,23 @@ class _ChannelDeleteView(discord.ui.View):
     async def channel_select(
         self, interaction: discord.Interaction, select: discord.ui.ChannelSelect
     ) -> None:
-        self.selected_channel = select.values[0] if select.values else None
+        if select.values:
+            app_channel = select.values[0]
+            
+            # 1. Try to get it from the fast internal cache
+            real_channel = interaction.guild.get_channel(app_channel.id)
+            
+            # 2. Cache miss: Fetch it directly from the Discord API instead
+            if real_channel is None:
+                try:
+                    real_channel = await interaction.guild.get_channel_or_thread(app_channel.id)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    real_channel = None
+
+            self.selected_channel = real_channel
+        else:
+            self.selected_channel = None
+        
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
     # Row 1: action buttons
