@@ -8,7 +8,7 @@ What was REMOVED vs the nextcord version (and where it moved):
   Tokens    → settings.secret_id / settings.topgg_token  (bot/config.py)
   Algolia   → settings.algolia_app_id / .algolia_api_key  (bot/config.py)
   Spotify   → settings.spotify_client_id / .secret        (bot/config.py)
-  RapidApi  → settings.joke_api                           (bot/config.py)
+  RapidApi  → MemeAPIs
   PasteBin  → not used anywhere; dropped entirely
 
 What was CHANGED:
@@ -66,7 +66,7 @@ class Client:
     guild_id:        int = 932264473408966656   # primary / dev guild
     test_guild_id:   int = 866235308416040971
     bot_version:     str = "5.0.0"
-    github_bot_repo: str = "https://github.com/abindent/Nextcord-Utility-Bot"
+    github_bot_repo: str = "https://github.com/abindent/Python-Utility-Bot"
 
     invite_permissions: discord.Permissions = discord.Permissions(
         view_channel=True,
@@ -106,7 +106,7 @@ class Emojis:
     hand_raised = "🙋"
     upload = "📝"
     snekbox = "🐍"
-    member_join = "<:member_join:942985122846752798>"
+    member_join = "<:personadd:1514825322023882822>"
     repeat = "🔁"
     idea = "💡"
     warning = "⚠️"
@@ -136,8 +136,7 @@ class Emojis:
     book = "📖"
     tv = "📺"
     hourglass = "⌛"
-    
-    
+
     # ── Giveaway ─────────────────────────────────────────────────────────────
     tada = "🎉"
     animated_tada = "<a:tada2:968745311327649793>"
@@ -151,7 +150,6 @@ class Emojis:
     RIGHT_EMOJI = "➡️"
     LAST_EMOJI = "⏭️"
 
-
     # ── Status ───────────────────────────────────────────────────────────────
     confirmation = "✅"
     decline = "❌"
@@ -160,7 +158,7 @@ class Emojis:
     info = "ℹ️"
     check_mark = "✅"
     cross_mark = "❌"
-    prohibited="🚫"
+    prohibited = "🚫"
     question_mark = "❓"
     x = "🇽"   # 🇽  — used as game piece
     o = "🇴"   # 🇴  — used as game piece
@@ -248,6 +246,13 @@ class Emojis:
     discord_emoji = "<:discord:1514829525668855978>"
     youtube_emoji = "<a:yt:1514827814736629819>"
     github_emoji = "<:github:1514827777906446489>"
+
+
+# ── Meme APIs ─────────────────────────────────────────────────────────────────
+class MemeAPIs:
+    _MEME_REDDIT_API = "https://meme-api.com/gimme"
+    _MEME_MEMEGEN_API = "https://api.memegen.link/images/random"
+    _JOKE_API = "https://v2.jokeapi.dev/joke/{category}"
 
 
 # ── Icon URLs ─────────────────────────────────────────────────────────────────

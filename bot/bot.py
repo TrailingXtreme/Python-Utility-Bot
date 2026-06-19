@@ -22,7 +22,7 @@ from pathlib import Path
 
 import asyncpg
 import discord
-from bot.util.constants import Emojis
+from util.constants import Emojis
 from config import settings
 from discord import app_commands
 from discord.ext import commands

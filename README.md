@@ -20,7 +20,7 @@ A simple template for building a beautiful discord bot with nextcord.Here I have
 
 ## 💻 How to setup
 ### Step 1
- Run ```git clone https://github.com/abindent/Nextcord-Utility-Bot.git``` this command to our terminal for cloning this repo.
+ Run ```git clone https://github.com/abindent/Python-Utility-Bot.git``` this command to our terminal for cloning this repo.
  
 ### Step 2
  Add environment variable file (eg:- `.env`, `.env.local`, `.env.developement`).

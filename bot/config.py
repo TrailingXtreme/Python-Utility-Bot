@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     # Optional integrations — empty string = feature disabled.
     topgg_token: str = Field("", alias="TOPGGTOKEN")
     github_token: str = Field("", alias="GITHUB_TOKEN")
+    
 
     # ── Algolia (Discord Developer Docs search) ──────────────────────────────
     # Public read-only keys for the discord.dev Algolia index.
