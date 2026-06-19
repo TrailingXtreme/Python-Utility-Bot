@@ -22,6 +22,7 @@ from pathlib import Path
 
 import asyncpg
 import discord
+from bot.util.constants import Emojis
 from config import settings
 from discord import app_commands
 from discord.ext import commands
@@ -224,7 +225,7 @@ class DiscordBot(commands.AutoShardedBot):
         try:
             if await self.db.blacklist.is_blacklisted(message.author.id):
                 embed = discord.Embed(
-                    title="🚫 You are not allowed to use my commands.",
+                    title=f"{Emojis.prohibited} You are not allowed to use my commands.",
                     colour=0x00FFFF,
                 )
                 await message.author.send(embed=embed)
@@ -260,7 +261,7 @@ class DiscordBot(commands.AutoShardedBot):
 
         assert self.user is not None
         embed = discord.Embed(
-            title="❌ Error",
+            title=f"{Emojis.cross_mark} Error",
             description="An error occurred while running this command.",
             colour=0xFF5733,
         )

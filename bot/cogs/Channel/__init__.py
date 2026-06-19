@@ -39,7 +39,6 @@ Interactive components
 
 from __future__ import annotations
 
-from calendar import c
 from collections.abc import Callable
 from datetime import datetime, timezone
 import random
@@ -113,6 +112,56 @@ def _fmt_duration(seconds: int) -> str:
     if s:
         parts.append(f"{s}s")
     return " ".join(parts) or "0s"
+
+
+async def _ensure_target(
+    interaction: discord.Interaction,
+    target: object,
+    *types: type,
+) -> bool:
+    """Gracefully verify ``target`` is one of ``types`` before a command proceeds.
+
+    Several commands resolve their target with ``channel or interaction.channel``
+    and then need a guild channel of a specific kind. Previously this was checked
+    with a bare ``assert``, which (a) raises an unfriendly, unhandled
+    ``AssertionError`` instead of a normal error message — e.g. whenever the
+    command is run inside a thread without explicitly passing ``channel`` — and
+    (b) silently disappears entirely if the bot is ever run with Python's ``-O``
+    optimisation flag. This sends a clear ephemeral error instead and returns
+    ``False`` so the caller can simply ``return``.
+    """
+    if isinstance(target, types):
+        return True
+    kind = " or ".join(t.__name__ for t in types)
+    await interaction.response.send_message(
+        embed=_err(
+            f"This command only works on a **{kind}**. "
+            "Run it inside that channel, or pass the `channel` option explicitly."
+        ),
+        ephemeral=True,
+    )
+    return False
+
+
+class _TimeoutView(discord.ui.View):
+    """Base view that disables its own components and edits the message when it
+    times out, instead of leaving dead, clickable-looking buttons behind that
+    fail silently (or with a confusing "interaction failed" error) once the
+    view has stopped listening.
+    """
+
+    def __init__(self, *, timeout: float | None) -> None:
+        super().__init__(timeout=timeout)
+        self.message: discord.Message | discord.InteractionMessage | None = None
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except discord.HTTPException:
+                pass
 
 
 # ── Modals ────────────────────────────────────────────────────────────────────
@@ -267,12 +316,11 @@ class _PurgeAmountModal(discord.ui.Modal, title="Purge Messages"):
             colour=_WARNING_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
+        view = PurgeConfirmView(self.channel, amt, _check, self.requester, filter_str)
         await interaction.response.send_message(
-            embed=confirm_embed,
-            view=PurgeConfirmView(self.channel, amt, _check,
-                                  self.requester, filter_str),
-            ephemeral=True,
+            embed=confirm_embed, view=view, ephemeral=True,
         )
+        view.message = await interaction.original_response()
 
 
 class PermOverwriteModal(discord.ui.Modal, title="Custom Permission Overwrite"):
@@ -383,7 +431,7 @@ class _PermPresetSelect(discord.ui.Select):
         await interaction.response.edit_message(embed=view.build_embed(), view=view)
 
 
-class _CloneConfirmView(discord.ui.View):
+class _CloneConfirmView(_TimeoutView):
     """Ephemeral Clone / Cancel confirmation."""
 
     def __init__(
@@ -418,11 +466,8 @@ class _CloneConfirmView(discord.ui.View):
         self.stop()
         await interaction.response.edit_message(embed=_ok("Clone cancelled."), view=None)
 
-    async def on_timeout(self) -> None:
-        self.stop()
 
-
-class PurgeConfirmView(discord.ui.View):
+class PurgeConfirmView(_TimeoutView):
     """Ephemeral Purge / Cancel — runs bulk-delete only on confirm."""
 
     def __init__(
@@ -467,11 +512,8 @@ class PurgeConfirmView(discord.ui.View):
         self.stop()
         await interaction.response.edit_message(embed=_ok("Purge cancelled."), view=None)
 
-    async def on_timeout(self) -> None:
-        self.stop()
 
-
-class ChannelPermsView(discord.ui.View):
+class ChannelPermsView(_TimeoutView):
     """Multi-target permission overwrite editor.
 
     Row 0  RoleSelect  (0 – 10 roles)
@@ -631,7 +673,7 @@ class ChannelPermsView(discord.ui.View):
         await interaction.response.edit_message(embed=_ok("Permission editor closed."), view=None)
 
 
-class ChannelManageView(discord.ui.View):
+class ChannelManageView(_TimeoutView):
     """Ephemeral 13-button interactive dashboard for a text channel.
 
     Row 0  [Lock/Unlock 🔒]  [Hide 👁]  [Unhide 👁‍🗨]  [Archive 📁]  [NSFW 🔞]
@@ -820,12 +862,11 @@ class ChannelManageView(discord.ui.View):
             ),
             colour=_WARNING_COLOUR,
         )
+        view = _CloneConfirmView(self.channel, interaction.user, new_name=new_name)
         await interaction.response.send_message(
-            embed=confirm_embed,
-            view=_CloneConfirmView(
-                self.channel, interaction.user, new_name=new_name),
-            ephemeral=True,
+            embed=confirm_embed, view=view, ephemeral=True,
         )
+        view.message = await interaction.original_response()
 
     @discord.ui.button(label="Purge", emoji=Emojis.trashcan, style=discord.ButtonStyle.danger, row=1)
     async def purge_btn(
@@ -843,6 +884,7 @@ class ChannelManageView(discord.ui.View):
         view = ChannelPermsView(self.channel, interaction.user)
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
     @discord.ui.button(label="Refresh", emoji=Emojis.refresh, style=discord.ButtonStyle.secondary, row=2)
     async def refresh_btn(
@@ -861,7 +903,7 @@ class ChannelManageView(discord.ui.View):
         await interaction.response.edit_message(embed=_ok("Management panel closed."), view=None)
 
 
-class _HideUnhideView(discord.ui.View):
+class _HideUnhideView(_TimeoutView):
     """Ephemeral Hide/Unhide role selector.
 
     Row 0  RoleSelect  (0 – 10 roles)
@@ -892,14 +934,14 @@ class _HideUnhideView(discord.ui.View):
         return True
 
     def build_embed(self) -> discord.Embed:
-        action_label = "Hidden From" if self.action == "hide" else "Unhidden For"
+        action_label = "Hide From" if self.action == "hide" else "Unhide For"
         embed = discord.Embed(
             title=f"{Emojis.shield}  {self.action.title()} Channel — #{self.channel.name}",
             colour=_INFO_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
         embed.add_field(
-            name="Roles",
+            name=f"Roles to {action_label}",
             value=", ".join(
                 f"@{r.name}" for r in self.selected_roles) or "*None selected*",
             inline=False,
@@ -955,7 +997,7 @@ class _HideUnhideView(discord.ui.View):
         await interaction.response.edit_message(embed=_ok("Cancelled."), view=None)
 
 
-class _LockUnlockView(discord.ui.View):
+class _LockUnlockView(_TimeoutView):
     """Ephemeral Lock/Unlock role selector.
 
     Row 0  RoleSelect  (0 – 10 roles)
@@ -988,14 +1030,14 @@ class _LockUnlockView(discord.ui.View):
         return True
 
     def build_embed(self) -> discord.Embed:
-        action_label = "Locked For" if self.action == "lock" else "Unlocked For"
+        action_label = "Lock For" if self.action == "lock" else "Unlock For"
         embed = discord.Embed(
             title=f"{Emojis.shield}  {self.action.title()} Channel — #{self.channel.name}",
             colour=_INFO_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
         embed.add_field(
-            name="Roles",
+            name=f"Roles to {action_label}",
             value=", ".join(
                 f"@{r.name}" for r in self.selected_roles) or "*None selected*",
             inline=False,
@@ -1425,7 +1467,7 @@ class _ChannelCreateTypeSelect(discord.ui.Select):
         await interaction.response.edit_message(embed=view.build_embed(), view=view)
 
 
-class _ChannelCreateView(discord.ui.View):
+class _ChannelCreateView(_TimeoutView):
     """Interactive channel creation view.
 
     Row 0  _ChannelCreateTypeSelect  (text / voice / forum / stage / category)
@@ -1584,7 +1626,7 @@ _DELETABLE_TYPES: list[discord.ChannelType] = [
 ]
 
 
-class _DeleteConfirmView(discord.ui.View):
+class _DeleteConfirmView(_TimeoutView):
     """Ephemeral Delete / Cancel — runs the actual delete only on confirm."""
 
     def __init__(
@@ -1635,11 +1677,8 @@ class _DeleteConfirmView(discord.ui.View):
         self.stop()
         await interaction.response.edit_message(embed=_ok("Delete cancelled."), view=None)
 
-    async def on_timeout(self) -> None:
-        self.stop()
 
-
-class _ChannelDeleteView(discord.ui.View):
+class _ChannelDeleteView(_TimeoutView):
     """Interactive channel/category deletion builder — one panel instead of
     separate /channel delete text|voice|category|forum|stage commands.
 
@@ -1697,14 +1736,16 @@ class _ChannelDeleteView(discord.ui.View):
     ) -> None:
         if select.values:
             app_channel = select.values[0]
-            
+
             # 1. Try to get it from the fast internal cache
             real_channel = interaction.guild.get_channel(app_channel.id)
-            
-            # 2. Cache miss: Fetch it directly from the Discord API instead
+
+            # 2. Cache miss: fetch it directly from the Discord API instead.
+            #    (get_channel_or_thread() is a sync cache lookup, NOT a coroutine —
+            #    awaiting it would raise a TypeError, so fetch_channel() is used here.)
             if real_channel is None:
                 try:
-                    real_channel = await interaction.guild.get_channel_or_thread(app_channel.id)
+                    real_channel = await interaction.guild.fetch_channel(app_channel.id)
                 except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                     real_channel = None
 
@@ -1738,11 +1779,11 @@ class _ChannelDeleteView(discord.ui.View):
             colour=_WARNING_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
+        view = _DeleteConfirmView(target, interaction.user)
         await interaction.response.send_message(
-            embed=confirm_embed,
-            view=_DeleteConfirmView(target, interaction.user),
-            ephemeral=True,
+            embed=confirm_embed, view=view, ephemeral=True,
         )
+        view.message = await interaction.original_response()
 
     @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=1)
     async def cancel_btn(
@@ -1778,14 +1819,29 @@ class Channels(
         interaction: discord.Interaction,
         error: app_commands.AppCommandError,
     ) -> None:
+        original = getattr(error, "original", error)
+
         if isinstance(error, app_commands.MissingPermissions):
             perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
             msg = f"You need the {perms} permission(s) to use this command."
         elif isinstance(error, app_commands.BotMissingPermissions):
             perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
             msg = f"I need the {perms} permission(s) to do that."
+        elif isinstance(original, discord.Forbidden):
+            msg = "I don't have permission to do that here."
+        elif isinstance(original, discord.HTTPException):
+            msg = f"Discord rejected that request: `{original.text}`"
         else:
+            # Unexpected bug — still tell the user something went wrong instead of
+            # leaving their interaction hanging with no response at all, but
+            # re-raise afterwards so it still gets logged by the bot's error handler.
+            msg = "Something went wrong running that command. Please try again."
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=_err(msg), ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=_err(msg), ephemeral=True)
             raise error
+
         if interaction.response.is_done():
             await interaction.followup.send(embed=_err(msg), ephemeral=True)
         else:
@@ -1821,7 +1877,8 @@ class Channels(
             embed.add_field(name="Announcement",
                             value="Yes" if channel.is_news() else "No")
             embed.add_field(name="Threads", value=str(len(channel.threads)))
-        embed.add_field(name="Position", value=str(channel.position))
+        if isinstance(channel, discord.abc.GuildChannel):
+            embed.add_field(name="Position", value=str(channel.position))
         embed.add_field(name="Created", value=discord.utils.format_dt(
             channel.created_at, "R"))
         embed.set_footer(text=f"Requested by {ctx.author}")
@@ -1846,7 +1903,8 @@ class Channels(
         embed.add_field(name="ID", value=f"`{target.id}`")
         embed.add_field(name="Type", value=str(
             target.type).replace("_", " ").title())
-        embed.add_field(name="Position", value=str(target.position))
+        if isinstance(target, discord.abc.GuildChannel):
+            embed.add_field(name="Position", value=str(target.position))
         embed.add_field(
             name="Category",
             value=(target.category.name
@@ -1902,6 +1960,8 @@ class Channels(
         channel: discord.TextChannel | None = None,
     ) -> None:
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         await target.edit(slowmode_delay=seconds)
         embed = (_ok(f"Slowmode **disabled** in {target.mention}.")
@@ -1922,6 +1982,8 @@ class Channels(
         channel: discord.TextChannel | None = None,
     ) -> None:
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         await target.edit(topic=topic or None)
         embed = (_ok(f"Topic for {target.mention} updated.")
@@ -1941,6 +2003,8 @@ class Channels(
         channel: discord.TextChannel | discord.VoiceChannel | None = None,
     ) -> None:
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel, discord.VoiceChannel):
+            return
         assert isinstance(target, (discord.TextChannel, discord.VoiceChannel))
         old_name = target.name
         await target.edit(name=name)
@@ -1958,6 +2022,8 @@ class Channels(
         channel: discord.TextChannel | None = None,
     ) -> None:
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         new_state = not target.is_nsfw()
         await target.edit(nsfw=new_state)
@@ -1978,10 +2044,13 @@ class Channels(
     ) -> None:
         assert interaction.guild is not None
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         view = _HideUnhideView(target, interaction.user, action="hide")
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
     # ── /channel unhide ───────────────────────────────────────────────────────
 
@@ -1996,10 +2065,13 @@ class Channels(
     ) -> None:
         assert interaction.guild is not None
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         view = _HideUnhideView(target, interaction.user, action="unhide")
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
     # ── /channel lock ─────────────────────────────────────────────────────────
 
@@ -2018,11 +2090,14 @@ class Channels(
     ) -> None:
         assert interaction.guild is not None
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         view = _LockUnlockView(target, interaction.user,
                                action="lock", reason=reason)
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
     # ── /channel unlock ───────────────────────────────────────────────────────
 
@@ -2041,11 +2116,14 @@ class Channels(
     ) -> None:
         assert interaction.guild is not None
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         view = _LockUnlockView(target, interaction.user,
                                action="unlock", reason=reason)
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
     # ── /channel archive ──────────────────────────────────────────────────────
 
@@ -2064,6 +2142,8 @@ class Channels(
     ) -> None:
         assert interaction.guild is not None
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         overwrite = target.overwrites_for(interaction.guild.default_role)
         overwrite.send_messages = False
@@ -2098,6 +2178,8 @@ class Channels(
         channel: discord.TextChannel | discord.VoiceChannel | None = None,
     ) -> None:
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel, discord.VoiceChannel):
+            return
         assert isinstance(target, (discord.TextChannel, discord.VoiceChannel))
         new_name = name or f"copy-of-{target.name}"
         confirm_embed = discord.Embed(
@@ -2108,12 +2190,11 @@ class Channels(
             ),
             colour=_WARNING_COLOUR,
         )
+        view = _CloneConfirmView(target, interaction.user, new_name=new_name)
         await interaction.response.send_message(
-            embed=confirm_embed,
-            view=_CloneConfirmView(
-                target, interaction.user, new_name=new_name),
-            ephemeral=True,
+            embed=confirm_embed, view=view, ephemeral=True,
         )
+        view.message = await interaction.original_response()
 
     # ── /channel purge ────────────────────────────────────────────────────────
 
@@ -2143,6 +2224,8 @@ class Channels(
         channel: discord.TextChannel | None = None,
     ) -> None:
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
 
         def _check(m: discord.Message) -> bool:
@@ -2180,12 +2263,11 @@ class Channels(
             colour=_WARNING_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
+        view = PurgeConfirmView(target, amount, _check, interaction.user, filter_str)
         await interaction.response.send_message(
-            embed=confirm_embed,
-            view=PurgeConfirmView(target, amount, _check,
-                                  interaction.user, filter_str),
-            ephemeral=True,
+            embed=confirm_embed, view=view, ephemeral=True,
         )
+        view.message = await interaction.original_response()
 
     # ── /channel manage ───────────────────────────────────────────────────────
 
@@ -2199,10 +2281,13 @@ class Channels(
         channel: discord.TextChannel | None = None,
     ) -> None:
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         view = ChannelManageView(target, interaction.user)
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
     # ── /channel perms ────────────────────────────────────────────────────────
 
@@ -2216,10 +2301,13 @@ class Channels(
         channel: discord.TextChannel | None = None,
     ) -> None:
         target = channel or interaction.channel
+        if not await _ensure_target(interaction, target, discord.TextChannel):
+            return
         assert isinstance(target, discord.TextChannel)
         view = ChannelPermsView(target, interaction.user)
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
     # ── /channel create (interactive) ─────────────────────────────────────────
 
@@ -2233,7 +2321,7 @@ class Channels(
         view = _ChannelCreateView(interaction.guild, interaction.user)
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
-
+        view.message = await interaction.original_response()
 
     # ── /channel delete builder ───────────────────────────────────────────────
 
@@ -2247,6 +2335,7 @@ class Channels(
         view = _ChannelDeleteView(interaction.guild, interaction.user)
         await interaction.response.send_message(
             embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
 
 async def setup(bot: commands.Bot) -> None:

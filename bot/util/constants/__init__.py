@@ -160,6 +160,7 @@ class Emojis:
     info = "ℹ️"
     check_mark = "✅"
     cross_mark = "❌"
+    prohibited="🚫"
     question_mark = "❓"
     x = "🇽"   # 🇽  — used as game piece
     o = "🇴"   # 🇴  — used as game piece
