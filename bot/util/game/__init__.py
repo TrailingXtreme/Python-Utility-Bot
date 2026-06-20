@@ -1,5 +1,5 @@
 """
-util/game/__init__.py
+bot/util/game/__init__.py
 ─────────────────────────────────────────────────────────────────────────────
 Wordle engine + TicTacToe UI  –  discord.py 2.x
 (ported from nextcord; game logic is unchanged)
@@ -46,6 +46,7 @@ import math
 import random
 from typing import List
 
+import aiohttp
 import discord
 
 from util.constants import Emojis
@@ -60,6 +61,62 @@ all_words: set[str]      = {w.strip() for w in open(_cwd + "/game/wordle/sowpods
 # ── Emoji shortcut ────────────────────────────────────────────────────────────
 
 EMOJI_CODES = Emojis.EMOJI_CODES
+
+# ── Dictionary fallback (for valid English words missing from SOWPODS) ───────
+#
+# SOWPODS is a Scrabble word list — large, but it's still missing plenty of
+# ordinary English words (and it includes plenty of obscure ones nobody
+# would call "real"). Rather than rejecting a guess just because it's absent
+# from one static file, anything SOWPODS doesn't recognise gets a second
+# opinion from a free dictionary API before being rejected.
+#
+# Results are cached in-memory for the lifetime of the process so repeated
+# guesses of the same word (very common across many concurrent games) never
+# hit the network twice, and so an API outage only costs latency once per
+# unique word rather than once per guess.
+
+_DICTIONARY_API_URL = "https://api.dictionaryapi.dev/api/v2/entries/en/{word}"
+_API_TIMEOUT = aiohttp.ClientTimeout(total=3)
+
+_api_verified_words: set[str] = set()    # confirmed real words, not in all_words
+_api_rejected_words: set[str] = set()    # confirmed NOT real words (404 from API)
+
+
+async def _check_word_via_api(word: str) -> bool:
+    """
+    Ask a free dictionary API whether *word* is a real English word.
+
+    Returns True only on an explicit, confident answer (HTTP 200 with at
+    least one dictionary entry). Any ambiguity — network failure, timeout,
+    unexpected response — falls back to False so the word list stays the
+    single source of truth whenever the API can't weigh in cleanly. A 404
+    is the API's explicit "not a word" answer and is treated the same way.
+    """
+    if word in _api_verified_words:
+        return True
+    if word in _api_rejected_words:
+        return False
+
+    try:
+        async with aiohttp.ClientSession(timeout=_API_TIMEOUT) as session:
+            async with session.get(_DICTIONARY_API_URL.format(word=word)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    if isinstance(data, list) and len(data) > 0:
+                        _api_verified_words.add(word)
+                        return True
+                    _api_rejected_words.add(word)
+                    return False
+                if resp.status == 404:
+                    _api_rejected_words.add(word)
+                    return False
+                # Anything else (rate limit, 5xx, etc.) is inconclusive —
+                # don't cache it, and don't let it block a valid guess
+                # just because the API had a bad moment.
+                return False
+    except (aiohttp.ClientError, TimeoutError):
+        # Network hiccup — same reasoning: inconclusive, not a rejection.
+        return False
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -501,9 +558,24 @@ def update_embed(embed: discord.Embed, guess: str) -> discord.Embed:
     return embed
 
 
-def is_valid_word(word: str) -> bool:
-    """Return True if *word* appears in the SOWPODS dictionary."""
-    return word in all_words
+async def is_valid_word(word: str) -> bool:
+    """
+    Return True if *word* is a valid 5-letter English word.
+
+    Fast path: SOWPODS local list (instant, no network — covers the vast
+    majority of guesses).
+    Fallback: if SOWPODS doesn't recognise the word, ask a dictionary API
+    before rejecting it, since SOWPODS is missing plenty of legitimate
+    English words. The API check is skipped entirely once the fast path
+    already says yes, and also skipped for anything that isn't 5 letters
+    long, since Wordle guesses must always be exactly 5 letters regardless
+    of whether the word itself is real.
+    """
+    if len(word) != 5:
+        return False
+    if word in all_words:
+        return True
+    return await _check_word_via_api(word)
 
 
 def is_game_over(embed: discord.Embed) -> bool:
@@ -618,8 +690,23 @@ async def process_message_as_guess(
             pass
         return True
 
+    # ── Length check ──────────────────────────────────────────────────────────
+    # Wordle answers are always exactly 5 letters. This must run before the
+    # dictionary check: a real English word of any other length (e.g. "ok",
+    # "knit", "happiness") would otherwise pass validation and then crash
+    # generate_colored_word, which assumes guess/answer are the same length.
+    if len(guess) != 5:
+        await message.reply(
+            "Please reply with a **5-letter word**.", delete_after=5
+        )
+        try:
+            await message.delete(delay=5)
+        except Exception:
+            pass
+        return True
+
     # ── Dictionary check ──────────────────────────────────────────────────────
-    if not is_valid_word(guess):
+    if not await is_valid_word(guess):
         await message.reply("**Not a valid word.** Try again!", delete_after=5)
         try:
             await message.delete(delay=5)
