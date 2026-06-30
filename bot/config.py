@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     # Public read-only keys for the discord.dev Algolia index.
     algolia_app_id: str = Field("BH4D9OD16A", alias="ALGOLIA_SEARCH_APP_ID")
     algolia_api_key: str = Field("", alias="ALGOLIA_SEARCH_API_KEY")
+    algolia_index_name: str = Field("discord", alias="ALGOLIA_SEARCH_INDEX_NAME")
 
     # ── Derived helpers ──────────────────────────────────────────────────────
 

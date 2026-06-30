@@ -1,3 +1,4 @@
+# Location: bot/util/db/repositories/invite.py
 """InviteRepository — invite_tracking table.
 
 Methods
@@ -6,10 +7,10 @@ get                  — one inviter row (or None)
 record_invite        — upsert: increment count + append user; create if missing
 set_log_channel      — bulk-update log_channel for all rows in a guild
 guild_has_entries    — cheap existence check
-get_leaderboard      — top-N inviters by count for a guild
-get_log_channel      — fetch the log channel for a guild
-get_guild_log_channels — all guilds → their log channel
-get_inviter_of       — which inviter_id invited a given user
+get_leaderboard      — top-N inviters by count for a guild        [new]
+get_log_channel      — fetch the log channel for a guild          [new]
+get_guild_log_channels — all guilds → their log channel           [new]
+get_inviter_of       — which inviter_id invited a given user      [new]
 """
 
 import asyncpg

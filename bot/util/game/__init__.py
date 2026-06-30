@@ -520,9 +520,17 @@ def generate_puzzle_embed(
     BUG FIX: original called set_author() twice (bot name then player name);
     the first call was a dead write.  Only the player call remains.
     """
+    blank_rows = "\n".join([generate_blanks()] * 6)
     embed = discord.Embed(
-        title="🎲 | **Play `Wordle` with me**",
-        description="\n".join([generate_blanks()] * 6),
+        title=f"{Emojis.game_die}  Wordle",
+        description=(
+            f"{Emojis.idea} **Guess the 5-letter word in 6 tries.** "
+            "Reply to this message with your guess.\n"
+            f"{EMOJI_CODES['green']['a']} = right spot　"
+            f"{EMOJI_CODES['yellow']['a']} = wrong spot　"
+            f"{EMOJI_CODES['gray']['a']} = not in word\n"
+            f"{blank_rows}"
+        ),
         color=discord.Color.blue(),
     )
     embed.set_author(name=user.name, icon_url=user.display_avatar.url)
@@ -550,10 +558,20 @@ def update_embed(embed: discord.Embed, guess: str) -> discord.Embed:
     num_empty = embed.description.count(empty_slot)
 
     if guess == answer:
-        endings = {5: "Genius!", 4: "Magnificent!", 3: "Impressive!", 2: "Splendid!", 1: "Great!", 0: "Phew!"}
-        embed.description += f"\n\n{endings.get(num_empty, 'Nice!')}"
+        endings = {
+            5: "Genius!",
+            4: "Magnificent!",
+            3: "Impressive!",
+            2: "Splendid!",
+            1: "Great!",
+            0: "Phew!",
+        }
+        ending = endings.get(num_empty, "Nice!")
+        embed.description += f"\n\n{Emojis.animated_tada} **{ending}** {Emojis.tada}"
+        embed.color = discord.Color.green()
     elif num_empty == 0:
-        embed.description += f"\n\nThe answer was **{answer}**!"
+        embed.description += f"\n\n{Emojis.cross_mark} **Out of guesses!** The answer was **{answer}**."
+        embed.color = discord.Color.red()
 
     return embed
 
@@ -611,7 +629,14 @@ def generate_info_embed() -> discord.Embed:
         title="About Wordle",
         description=(
             "Discord Wordle is a word-guessing puzzle game.\n\n"
-            "**Start a game with**\n\n"
+            f"{Emojis.book}  **How to play**\n"
+            "Guess the secret 5-letter word in 6 tries. After each guess, "
+            "reply to the puzzle message with your next word — the tiles "
+            "will show how close you were.\n\n"
+            f"{EMOJI_CODES['green']['a']} right letter, right spot　"
+            f"{EMOJI_CODES['yellow']['a']} right letter, wrong spot　"
+            f"{EMOJI_CODES['gray']['a']} not in the word\n\n"
+            f"{Emojis.idea}  **Start a game with**\n\n"
             f"{Emojis.sunny}       `/wordle daily`  — Play the puzzle of the day\n"
             f"{Emojis.game_die}       `/wordle random` — Play a random puzzle\n"
             f"{Emojis.boxing_glove}  `/wordle id`     — Play a puzzle by its ID\n\n"
@@ -620,6 +645,7 @@ def generate_info_embed() -> discord.Embed:
             f"{Emojis.youtube_emoji}  [YouTube tutorial]({youtube_url})\n"
             f"{Emojis.github_emoji}  [Source code on GitHub]({github_url})\n"
         ),
+        color=discord.Color.blue(),
     )
 
 

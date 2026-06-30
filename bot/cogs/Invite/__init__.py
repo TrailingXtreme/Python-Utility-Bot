@@ -1,4 +1,3 @@
-# Location: bot/cogs/InviteTracker/__init__.py
 """
 InviteTracker cog — invite attribution, join/leave logging, and leaderboard.
 

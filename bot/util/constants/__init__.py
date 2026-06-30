@@ -135,6 +135,8 @@ class Emojis:
     mute_channel = "🔇"
     book = "📖"
     tv = "📺"
+    search = "🔍"
+    _code_magnifying_glass = ":mag:"
     hourglass = "⌛"
 
     # ── Giveaway ─────────────────────────────────────────────────────────────

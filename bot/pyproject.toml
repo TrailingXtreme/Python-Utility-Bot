@@ -33,6 +33,7 @@ dependencies = [
     #   New (v4): from algoliasearch.search.client  import SearchClient
     # The Docs cog WILL FAIL at import until updated in Phase 5.
     "algoliasearch>=4.42.0",
+    "beautifulsoup4>=4.15.0",
     # ── Utilities ─────────────────────────────────────────────────────────────
     "humanfriendly>=10.0",
     "psutil>=7.2.2",
@@ -46,6 +47,7 @@ dependencies = [
     # Was required by pymongo for SRV URLs; may still be an indirect dep of
     # aiohttp in some environments. Safe to remove if uv reports it unused.
     "dnspython>=2.8.0",
+    "lxml>=6.1.1",
 ]
 
 
