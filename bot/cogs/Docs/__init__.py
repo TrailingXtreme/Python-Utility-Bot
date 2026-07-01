@@ -8,9 +8,9 @@ This merges two previous implementations into one discord.py-native cog:
     py-cord / their extensions / and the Python stdlib, fuzzy-matched the
     query against the inventory, and replied with a link.
 
-  * The *new* engine (``docs.py``, discord.py + algoliasearch v4) which
-    searched the Discord Developer Documentation via Algolia and replied
-    with an autocomplete-driven embed + link button.
+  * The *new* engine (``docs.py``, discord.py) which searches the Discord
+    Developer Documentation and replies with an autocomplete-driven embed
+    + link button.
 
 Both data sources now live behind a single ``/docs`` slash command with a
 ``library`` choice. UI has been rebuilt with modern discord.py components:
@@ -24,20 +24,17 @@ Both data sources now live behind a single ``/docs`` slash command with a
   * Autocomplete on the ``query`` parameter, branching on whichever
     ``library`` the user already picked (read via ``interaction.namespace``).
 
-algoliasearch v4 notes (unchanged from the previous rewrite)
+Discord Developer Docs (API) source
 ──────────────────────────────────────────────────────────────
-    # OLD (v2): SearchClient.create(app_id, api_key); client.init_index(name)
-    # NEW (v4, async): SearchClient(app_id, api_key); client.search_single_index(...)
-There is no more ``init_index`` — every method takes ``index_name`` directly.
-
-Hit schema caveat: see ``_hit_title`` / ``_hit_snippet`` / ``_hit_url`` —
-field access is defensive since the real DocSearch crawler config for
-discord.dev isn't introspectable from here.
-
-Graceful degradation: ``settings.algolia_api_key`` defaults to ``""``.
-The "Discord Developer Docs (API)" library choice checks for this and
-responds with a warning instead of constructing a client with an empty key.
-Sphinx-based libraries are unaffected and need no API key at all.
+This library choice is deliberately *not* backed by algoliasearch — algolia
+is untouched everywhere else it's used, but the Discord docs are fetched
+straight from Discord's own official ``llms.txt`` index (see
+``API_DOCS_LLMS_TXT_URL``), a flat Markdown list of every developer-docs
+page with a title, URL, and one-line description. ``parse_llms_txt`` turns
+that into a list of ``ApiDocMatch`` entries, cached on the cog after the
+first fetch (see ``_get_api_docs_table`` / ``docscache``), and searched with
+the same ``util.docs.fuzzy`` finder the Sphinx-based libraries use below —
+no external search service or API key required for this source at all.
 
 Sphinx inventory entries (``objects.inv``) only ever carry a name, a URL,
 and a role (``py:function``, ``c:macro``, ``std:label``, …) — there is no
@@ -58,14 +55,11 @@ import logging
 import os
 import re
 import zlib
-from typing import Any, NamedTuple
+from typing import NamedTuple
 
 import aiohttp
 import bs4
 import discord
-from algoliasearch.search.client import SearchClient
-from algoliasearch.search.models.search_params import SearchParams
-from config import settings
 from discord import app_commands
 from discord.ext import commands
 
@@ -84,11 +78,15 @@ try:
 except ImportError:
     _BS4_PARSER = "html.parser"
 
-_HIGHLIGHT_TAG_RE = re.compile(r"</?ais-highlight-[0-9]+>|</?em>")
-
-# Sentinel "library" choice value that routes the query through Algolia
-# (Discord Developer Docs) instead of a Sphinx objects.inv lookup.
+# Sentinel "library" choice value that routes the query through the
+# llms.txt-backed Discord Developer Docs search instead of a Sphinx
+# objects.inv lookup.
 API_DOCS_KEY = "discord-api"
+
+# Discord's official llms.txt index — a flat Markdown list of every
+# developer-docs page (title, URL, one-line description). This is fetched
+# and parsed instead of using algoliasearch for this particular source.
+API_DOCS_LLMS_TXT_URL = "https://docs.discord.com/llms.txt"
 
 LIBRARY_SOURCES: dict[str, str] = {
     "discord.py": "https://discordpy.readthedocs.io/en/latest/",
@@ -227,51 +225,55 @@ def parse_object_inv(stream: SphinxObjectFileReader, url: str) -> dict[str, tupl
     return result
 
 
-# ── Algolia hit accessors (defensive — see module docstring) ───────────────────
+# ── Discord Developer Docs (llms.txt) parsing ───────────────────────────────
 
-def _hit_get(hit: Any, key: str, default: Any = None) -> Any:
-    if isinstance(hit, dict):
-        return hit.get(key, default)
-    return getattr(hit, key, default)
-
-
-def _strip_highlight_tags(text: str) -> str:
-    text = text.replace("<em>", "**").replace("</em>", "**")
-    return _HIGHLIGHT_TAG_RE.sub("", text)
+class ApiDocMatch(NamedTuple):
+    title: str
+    url: str
+    description: str = ""
 
 
-def _hit_title(hit: Any) -> str:
-    hierarchy = _hit_get(hit, "hierarchy", {}) or {}
-    if isinstance(hierarchy, dict):
-        levels = [hierarchy.get(f"lvl{i}") for i in range(6) if hierarchy.get(f"lvl{i}")]
-        if levels:
-            return " > ".join(levels)[:256]
-    return str(
-        _hit_get(hit, "title") or _hit_get(hit, "name") or _hit_get(hit, "objectID", "Untitled result")
-    )[:256]
+# Matches a Markdown list entry of the form:
+#   - [Title](https://example.com/page.md): Optional description text.
+# The trailing "``: description``" is optional — some entries in Discord's
+# llms.txt are bare links with no description.
+_LLMS_TXT_ENTRY_RE = re.compile(r"^-\s*\[(?P<title>[^\]]+)]\((?P<url>[^)]+)\)(?::\s*(?P<description>.+))?\s*$")
 
 
-def _hit_snippet(hit: Any) -> str:
-    highlight = _hit_get(hit, "_snippetResult") or _hit_get(hit, "_highlightResult")
-    if isinstance(highlight, dict):
-        content_field = highlight.get("content") or highlight.get("description")
-        if isinstance(content_field, dict):
-            value = content_field.get("value")
-            if value:
-                return _strip_highlight_tags(value)[:500]
+def parse_llms_txt(text: str) -> list[ApiDocMatch]:
+    """Parse Discord's ``llms.txt`` into a flat list of ``ApiDocMatch``.
 
-    raw = _hit_get(hit, "content") or _hit_get(hit, "description") or ""
-    return str(raw)[:500] if raw else "*No preview available.*"
+    The file is a plain Markdown bullet list (grouped under ``##`` headings
+    we don't need to care about), one page per line. Entries under an
+    ``## Optional`` heading (site-level links like the developer portal
+    homepage, not actual docs pages) are skipped since they're not useful
+    search results.
 
+    Each entry's URL points at the ``.md`` (raw Markdown) version of the
+    page; we strip that suffix so the link we hand back to the user opens
+    the normal, human-readable docs page instead.
+    """
+    entries: list[ApiDocMatch] = []
+    in_optional_section = False
 
-def _hit_url(hit: Any) -> str | None:
-    url = _hit_get(hit, "url")
-    if not url:
-        return None
-    anchor = _hit_get(hit, "anchor")
-    if anchor and "#" not in url:
-        return f"{url}#{anchor}"
-    return url
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("##"):
+            in_optional_section = stripped.lstrip("#").strip().lower() == "optional"
+            continue
+        if in_optional_section:
+            continue
+
+        match = _LLMS_TXT_ENTRY_RE.match(stripped)
+        if not match:
+            continue
+
+        title = match.group("title").strip()
+        url = match.group("url").strip().removesuffix(".md")
+        description = (match.group("description") or "").strip()
+        entries.append(ApiDocMatch(title=title, url=url, description=description))
+
+    return entries
 
 
 # ── Shared view scaffolding ──────────────────────────────────────────────────
@@ -317,6 +319,14 @@ def _build_library_description(*, kind: str, description: str | None, url: str) 
     if description:
         bits.append(description)
     bits.append(f"[Jump to documentation]({url})")
+    return "\n".join(bits)
+
+
+def _build_api_docs_description(match: "ApiDocMatch") -> str:
+    bits: list[str] = []
+    if match.description:
+        bits.append(match.description)
+    bits.append(f"[Jump to documentation]({match.url})")
     return "\n".join(bits)
 
 
@@ -375,7 +385,7 @@ class DocsResultView(DocsAuthorCheckView):
         self.add_item(DeleteButton(row=1))
 
 
-# ── Algolia (Discord Developer Docs) view ───────────────────────────────────
+# ── Discord Developer Docs (llms.txt) view ──────────────────────────────────
 
 class ApiDocsResultView(DocsAuthorCheckView):
     def __init__(self, url: str, *, author_id: int) -> None:
@@ -394,40 +404,14 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.session: aiohttp.ClientSession | None = None
-        self.algolia_client: SearchClient | None = None
         self._lib_cache: dict[str, dict[str, tuple[str, str, str]]] = {}
         self._desc_cache: dict[str, str] = {}
-
-    @property
-    def _algolia_configured(self) -> bool:
-        # Both must be set. A blank `algolia_app_id` makes the SDK build a
-        # request host like "https://-dsn.algolia.net", which doesn't resolve
-        # to a real Algolia index and returns a non-JSON error/empty body —
-        # surfacing as "Expecting object or array (near 1:1)" in the logs
-        # rather than a real Algolia error.
-        return bool(settings.algolia_api_key) and bool(getattr(settings, "algolia_app_id", None))
+        self._api_docs_cache: list[ApiDocMatch] | None = None
 
     async def cog_load(self) -> None:
         self.session = aiohttp.ClientSession()
-        if self._algolia_configured:
-            self.algolia_client = SearchClient(settings.algolia_app_id, settings.algolia_api_key)
-            log.info("Docs cog: Algolia client ready (index=%s).", settings.algolia_index_name)
-        elif settings.algolia_api_key and not getattr(settings, "algolia_app_id", None):
-            log.warning(
-                "Docs cog: ALGOLIA_SEARCH_API_KEY is set but ALGOLIA_APP_ID is missing — "
-                "Discord API docs search will report unconfigured. (A missing app id is "
-                "what causes 'Expecting object or array' JSON parse errors at request time, "
-                "since requests go to a malformed host instead of a real error.)"
-            )
-        else:
-            log.warning("Docs cog: ALGOLIA_SEARCH_API_KEY not set — Discord API docs search will report unconfigured.")
 
     async def cog_unload(self) -> None:
-        if self.algolia_client is not None:
-            try:
-                await self.algolia_client.close()
-            except Exception as exc:  # noqa: BLE001
-                log.debug("Docs cog: error closing Algolia client: %s", exc)
         if self.session is not None:
             await self.session.close()
 
@@ -504,23 +488,30 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
         self._desc_cache[url] = text
         return text
 
-    # ── Algolia search ───────────────────────────────────────────────────────
+    # ── Discord Developer Docs (llms.txt) table + search ────────────────────
 
-    async def _search_api_docs(self, query: str, *, hits_per_page: int = 10) -> list[Any] | None:
-        """Returns ``None`` on a genuine search failure (so callers can tell
-        that apart from a search that simply had zero hits, which is ``[]``).
-        """
-        if self.algolia_client is None or not query:
+    async def _get_api_docs_table(self) -> list[ApiDocMatch]:
+        if self._api_docs_cache is not None:
+            return self._api_docs_cache
+
+        assert self.session is not None
+        async with self.session.get(API_DOCS_LLMS_TXT_URL) as resp:
+            if resp.status != 200:
+                raise RuntimeError(
+                    f"Could not fetch the Discord Developer Docs index (HTTP {resp.status}). Try again later."
+                )
+            text = await resp.text()
+
+        table = parse_llms_txt(text)
+        self._api_docs_cache = table
+        return table
+
+    @staticmethod
+    def _search_api_docs(table: list[ApiDocMatch], query: str, *, limit: int = 10) -> list[ApiDocMatch]:
+        """Fuzzy-searches the llms.txt table by title and description."""
+        if not query:
             return []
-        try:
-            response = await self.algolia_client.search_single_index(
-                index_name=settings.algolia_index_name,
-                search_params=SearchParams(query=query, hits_per_page=hits_per_page),
-            )
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Docs cog: Algolia search failed for %r: %s", query, exc, exc_info=True)
-            return None
-        return list(getattr(response, "hits", None) or [])
+        return fuzzy.finder(query, table, key=lambda m: f"{m.title} {m.description}", lazy=False)[:limit]
 
     # ── Autocomplete (branches on the already-chosen `library`) ────────────────
 
@@ -528,23 +519,14 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
         library = interaction.namespace.library
 
         if library == API_DOCS_KEY:
-            if not self._algolia_configured or not current:
+            if not current:
                 return []
-            hits = await self._search_api_docs(current, hits_per_page=25)
-            if not hits:
+            try:
+                table = await self._get_api_docs_table()
+            except RuntimeError:
                 return []
-            choices: list[app_commands.Choice[str]] = []
-            seen_titles: set[str] = set()
-            for hit in hits:
-                url = _hit_url(hit)
-                if not url:
-                    continue
-                title = _hit_title(hit)
-                if title in seen_titles:
-                    continue
-                seen_titles.add(title)
-                choices.append(app_commands.Choice(name=title[:100], value=url[:100]))
-            return choices[:25]
+            matches = self._search_api_docs(table, current, limit=25)
+            return [app_commands.Choice(name=m.title[:100], value=m.url[:100]) for m in matches]
 
         if not library or library not in LIBRARY_SOURCES:
             return []
@@ -588,44 +570,40 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
             await self._respond_library_docs(interaction, library, query)
 
     async def _respond_api_docs(self, interaction: discord.Interaction, query: str) -> None:
-        if not self._algolia_configured:
-            await interaction.followup.send(
-                ":warning: Discord API docs search isn't configured on this bot (missing `ALGOLIA_SEARCH_API_KEY`).",
-                ephemeral=True,
-            )
+        try:
+            table = await self._get_api_docs_table()
+        except RuntimeError as exc:
+            await interaction.followup.send(f":warning: {exc}", ephemeral=True)
             return
 
         # `query` is normally the autocomplete-selected page URL. If the user
-        # bypassed autocomplete with free text, re-search and take the top hit.
+        # bypassed autocomplete with free text, treat it as a search term instead.
         if query.startswith("http://") or query.startswith("https://"):
-            url = query
-            hits = await self._search_api_docs(query.rsplit("/", 1)[-1].replace("-", " "), hits_per_page=1)
-            hit = hits[0] if hits else None
+            match = next((m for m in table if m.url == query), None)
+            if match is None:
+                # The exact URL wasn't found verbatim (e.g. it got truncated by
+                # Discord's 100-char autocomplete choice-value limit) — fall
+                # back to searching by the page's slug.
+                slug = query.rsplit("/", 1)[-1].removesuffix(".md").replace("-", " ")
+                candidates = self._search_api_docs(table, slug, limit=1)
+                match = candidates[0] if candidates else None
         else:
-            hits = await self._search_api_docs(query, hits_per_page=1)
-            hit = hits[0] if hits else None
-            url = _hit_url(hit) if hit else None
+            candidates = self._search_api_docs(table, query, limit=1)
+            match = candidates[0] if candidates else None
 
-        if hits is None:
-            await interaction.followup.send(
-                ":warning: Discord API docs search failed (Algolia error). Check the bot logs.",
-                ephemeral=True,
-            )
-            return
-
-        if not hit or not url:
+        if not match:
             await interaction.followup.send(f":mag: No documentation results found for **{query}**.")
             return
 
         embed = discord.Embed(
-            title=_hit_title(hit),
-            description=_hit_snippet(hit),
+            title=match.title,
+            description=_build_api_docs_description(match),
             colour=discord.Colour.blurple(),
-            url=url,
+            url=match.url,
         )
         embed.set_footer(text="Discord Developer Documentation")
 
-        view = ApiDocsResultView(url, author_id=interaction.user.id)
+        view = ApiDocsResultView(match.url, author_id=interaction.user.id)
         await interaction.followup.send(embed=embed, view=view)
         view.message = await interaction.original_response()
 
@@ -671,12 +649,16 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
     @commands.command(name="docscache", aliases=["purge-docs", "deldocs"], description="Purge cached documentation inventories (owner only).")
     @commands.is_owner()
     async def docscache(self, ctx: commands.Context, library: str | None = None) -> None:
-        if library:
+        if library == API_DOCS_KEY:
+            self._api_docs_cache = None
+            title = "Purged docs cache for **Discord Developer Docs (API)**."
+        elif library:
             self._lib_cache.pop(library, None)
             title = f"Purged docs cache for **{library}**."
         else:
             self._lib_cache.clear()
             self._desc_cache.clear()
+            self._api_docs_cache = None
             title = "Purged all docs caches."
         embed = discord.Embed(title=title, colour=discord.Colour.blurple())
         await ctx.send(embed=embed)
