@@ -56,6 +56,22 @@ class ReviewStatus(StrEnum):
     REJECTED = "rejected"
 
 
+# ── Moderation log event enum ─────────────────────────────────────────────────
+class LogEvent(StrEnum):
+    """
+    The subset of moderation events that get their own dedicated log
+    channel. Anything not listed here (e.g. warns, note-only actions)
+    falls back to ``moderation_settings.mod_log_channel_id`` instead of
+    getting a column of its own — keeps the settings panel from sprawling
+    into one column per possible action, per the "limited custom
+    channels" scope agreed for this feature.
+    """
+    KICK = "kick"
+    BAN = "ban"
+    TIMEOUT = "timeout"
+    AUTOMOD = "automod"
+
+
 # ── Shared base ───────────────────────────────────────────────────────────────
 class _Row(BaseModel):
     """
@@ -248,10 +264,65 @@ class InviteTracking(_Row):
         return len(set(self.invited_users))
 
 
+# ── 9. moderation_settings ────────────────────────────────────────────────────
+class ModerationSettings(_Row):
+    """
+    Per-guild moderation configuration — one row per guild, created lazily
+    on first use (see ModerationRepository.get_or_create).
+
+    Modelled after the kind of settings panel Dyno / Arcane expose for
+    moderation: a general mod-log channel that acts as the fallback, a
+    handful of dedicated per-event channels (kick / ban / timeout /
+    AutoMod — see LogEvent), a configured mute role, a DM-on-punishment
+    toggle, and an incrementing case counter for numbered mod-log entries.
+
+    All *_channel_id / muted_role_id columns are nullable — a guild may
+    only configure some of them, or none at all.
+    """
+    guild_id:                DiscordId
+    mod_log_channel_id:      DiscordId | None = None
+    kick_log_channel_id:     DiscordId | None = None
+    ban_log_channel_id:      DiscordId | None = None
+    timeout_log_channel_id:  DiscordId | None = None
+    automod_log_channel_id:  DiscordId | None = None
+    muted_role_id:           DiscordId | None = None
+    dm_on_punishment:        bool = True
+    case_count:               int = Field(default=0, ge=0)
+    created_at:               datetime
+    updated_at:               datetime
+
+    def log_channel_for(self, event: LogEvent) -> int | None:
+        """
+        Resolve the channel a given event should be logged to: the
+        event's dedicated channel if one is set, otherwise the general
+        mod_log_channel_id fallback (which may itself be None).
+        """
+        specific = {
+            LogEvent.KICK: self.kick_log_channel_id,
+            LogEvent.BAN: self.ban_log_channel_id,
+            LogEvent.TIMEOUT: self.timeout_log_channel_id,
+            LogEvent.AUTOMOD: self.automod_log_channel_id,
+        }[event]
+        return specific if specific is not None else self.mod_log_channel_id
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def is_logging_configured(self) -> bool:
+        """True if at least one log channel (general or per-event) is set."""
+        return any((
+            self.mod_log_channel_id,
+            self.kick_log_channel_id,
+            self.ban_log_channel_id,
+            self.timeout_log_channel_id,
+            self.automod_log_channel_id,
+        ))
+
+
 # ── Public surface ────────────────────────────────────────────────────────────
 __all__ = [
     "DiscordId",
     "ReviewStatus",
+    "LogEvent",
     # Row models
     "GuildConfig",
     "BlacklistedUser",
@@ -261,4 +332,5 @@ __all__ = [
     "SuggestionSettings",
     "Suggestion",
     "InviteTracking",
+    "ModerationSettings",
 ]

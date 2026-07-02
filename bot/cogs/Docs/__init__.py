@@ -98,6 +98,12 @@ LIBRARY_SOURCES: dict[str, str] = {
     "python": "https://docs.python.org/3/",
 }
 
+
+def _library_emoji(library: str) -> str:
+    """Returns the branded emoji for a library key, or a fallback."""
+    return Emojis.library_icons.get(library, Emojis.book)
+
+
 _PREFIX_STRIP = (
     "nextcord.ext.commands.",
     "nextcord.ext.menus.",
@@ -237,7 +243,8 @@ class ApiDocMatch(NamedTuple):
 #   - [Title](https://example.com/page.md): Optional description text.
 # The trailing "``: description``" is optional — some entries in Discord's
 # llms.txt are bare links with no description.
-_LLMS_TXT_ENTRY_RE = re.compile(r"^-\s*\[(?P<title>[^\]]+)]\((?P<url>[^)]+)\)(?::\s*(?P<description>.+))?\s*$")
+_LLMS_TXT_ENTRY_RE = re.compile(
+    r"^-\s*\[(?P<title>[^\]]+)]\((?P<url>[^)]+)\)(?::\s*(?P<description>.+))?\s*$")
 
 
 def parse_llms_txt(text: str) -> list[ApiDocMatch]:
@@ -259,7 +266,8 @@ def parse_llms_txt(text: str) -> list[ApiDocMatch]:
     for line in text.splitlines():
         stripped = line.strip()
         if stripped.startswith("##"):
-            in_optional_section = stripped.lstrip("#").strip().lower() == "optional"
+            in_optional_section = stripped.lstrip(
+                "#").strip().lower() == "optional"
             continue
         if in_optional_section:
             continue
@@ -271,7 +279,8 @@ def parse_llms_txt(text: str) -> list[ApiDocMatch]:
         title = match.group("title").strip()
         url = match.group("url").strip().removesuffix(".md")
         description = (match.group("description") or "").strip()
-        entries.append(ApiDocMatch(title=title, url=url, description=description))
+        entries.append(ApiDocMatch(
+            title=title, url=url, description=description))
 
     return entries
 
@@ -304,7 +313,8 @@ class DocsAuthorCheckView(discord.ui.View):
 
 class DeleteButton(discord.ui.Button):
     def __init__(self, *, row: int = 1) -> None:
-        super().__init__(style=discord.ButtonStyle.secondary, emoji=Emojis.trashcan, label="Delete", row=row)
+        super().__init__(style=discord.ButtonStyle.secondary,
+                         emoji=Emojis.trashcan, label="Delete", row=row)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         await interaction.message.delete()
@@ -335,8 +345,10 @@ class DocsResultSelect(discord.ui.Select):
 
     def __init__(self, matches: list[DocMatch], *, library: str, cog: "Docs") -> None:
         self.cog = cog
-        self._lookup = {match.name[:100]: (match.url, match.kind) for match in matches}
-        options = [discord.SelectOption(label=match.name[:100], value=match.name[:100]) for match in matches[:25]]
+        self._lookup = {match.name[:100]: (
+            match.url, match.kind) for match in matches}
+        options = [discord.SelectOption(
+            label=match.name[:100], value=match.name[:100]) for match in matches[:25]]
         plural = "es" if len(matches) != 1 else ""
         super().__init__(
             placeholder=f"Browse {len(matches)} match{plural} for {library}…",
@@ -354,8 +366,9 @@ class DocsResultSelect(discord.ui.Select):
         description = await self.cog._get_symbol_description(url)
 
         embed = discord.Embed(
-            title=name,
-            description=_build_library_description(kind=kind, description=description, url=url),
+            title=f"{_library_emoji(self.library)} {name}",
+            description=_build_library_description(
+                kind=kind, description=description, url=url),
             colour=discord.Colour.blurple(),
             url=url,
         )
@@ -391,7 +404,8 @@ class ApiDocsResultView(DocsAuthorCheckView):
     def __init__(self, url: str, *, author_id: int) -> None:
         super().__init__(author_id=author_id)
         self.add_item(
-            discord.ui.Button(label="Open in Developer Docs", emoji=Emojis.book, style=discord.ButtonStyle.link, url=url, row=0)
+            discord.ui.Button(label="Open in Developer Docs", emoji=Emojis.book,
+                              style=discord.ButtonStyle.link, url=url, row=0)
         )
         self.add_item(DeleteButton(row=0))
 
@@ -425,7 +439,8 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
         assert self.session is not None
         async with self.session.get(base_url + "objects.inv") as resp:
             if resp.status != 200:
-                raise RuntimeError(f"Could not fetch the docs inventory for **{library}** (HTTP {resp.status}). Try again later.")
+                raise RuntimeError(
+                    f"Could not fetch the docs inventory for **{library}** (HTTP {resp.status}). Try again later.")
             data = await resp.read()
 
         table = parse_object_inv(SphinxObjectFileReader(data), base_url)
@@ -458,13 +473,15 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
                     return None
                 html = await resp.text()
         except (aiohttp.ClientError, TimeoutError) as exc:
-            log.debug("Docs cog: failed to fetch %s for description scrape: %s", page_url, exc)
+            log.debug(
+                "Docs cog: failed to fetch %s for description scrape: %s", page_url, exc)
             return None
 
         try:
             soup = await asyncio.to_thread(bs4.BeautifulSoup, html, _BS4_PARSER)
         except Exception as exc:  # noqa: BLE001 — purely cosmetic, never break the lookup
-            log.debug("Docs cog: failed to parse %s for description scrape: %s", page_url, exc)
+            log.debug(
+                "Docs cog: failed to parse %s for description scrape: %s", page_url, exc)
             return None
         target = soup.find(id=anchor)
         if target is None:
@@ -540,7 +557,8 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
         if not current:
             sample = items[:25]
         else:
-            sample = fuzzy.finder(current, items, key=lambda t: t[0], lazy=False)[:25]
+            sample = fuzzy.finder(
+                current, items, key=lambda t: t[0], lazy=False)[:25]
         return [app_commands.Choice(name=name[:100], value=name[:100]) for name, (_url, _kind, _qualname) in sample]
 
     # ── /docs ─────────────────────────────────────────────────────────────────
@@ -555,10 +573,12 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
         app_commands.Choice(name="nextcord", value="nextcord"),
         app_commands.Choice(name="disnake", value="disnake"),
         app_commands.Choice(name="py-cord", value="py-cord"),
-        app_commands.Choice(name="nextcord-ext-menus", value="nextcord-ext-menus"),
+        app_commands.Choice(name="nextcord-ext-menus",
+                            value="nextcord-ext-menus"),
         app_commands.Choice(name="nextcord-ext-ipc", value="nextcord-ext-ipc"),
         app_commands.Choice(name="python", value="python"),
-        app_commands.Choice(name="Discord Developer Docs (API)", value=API_DOCS_KEY),
+        app_commands.Choice(
+            name="Discord Developer Docs (API)", value=API_DOCS_KEY),
     ])
     @app_commands.autocomplete(query=_query_autocomplete)
     async def docs(self, interaction: discord.Interaction, library: str, query: str) -> None:
@@ -573,7 +593,7 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
         try:
             table = await self._get_api_docs_table()
         except RuntimeError as exc:
-            await interaction.followup.send(f":warning: {exc}", ephemeral=True)
+            await interaction.followup.send(f"{Emojis.custom_warning} {exc}", ephemeral=True)
             return
 
         # `query` is normally the autocomplete-selected page URL. If the user
@@ -584,7 +604,8 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
                 # The exact URL wasn't found verbatim (e.g. it got truncated by
                 # Discord's 100-char autocomplete choice-value limit) — fall
                 # back to searching by the page's slug.
-                slug = query.rsplit("/", 1)[-1].removesuffix(".md").replace("-", " ")
+                slug = query.rsplit(
+                    "/", 1)[-1].removesuffix(".md").replace("-", " ")
                 candidates = self._search_api_docs(table, slug, limit=1)
                 match = candidates[0] if candidates else None
         else:
@@ -592,11 +613,11 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
             match = candidates[0] if candidates else None
 
         if not match:
-            await interaction.followup.send(f":mag: No documentation results found for **{query}**.")
+            await interaction.followup.send(f"{Emojis.search} No documentation results found for **{query}**.")
             return
 
         embed = discord.Embed(
-            title=match.title,
+            title=f"{_library_emoji(API_DOCS_KEY)} {match.title}",
             description=_build_api_docs_description(match),
             colour=discord.Colour.blurple(),
             url=match.url,
@@ -611,7 +632,7 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
         try:
             table = await self._get_library_table(library)
         except RuntimeError as exc:
-            await interaction.followup.send(f":warning: {exc}")
+            await interaction.followup.send(f"{Emojis.custom_warning} {exc}")
             return
 
         if not query:
@@ -619,28 +640,32 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
             return
 
         items = list(table.items())
-        results = fuzzy.finder(query, items, key=lambda t: t[0], lazy=False)[:25]
+        results = fuzzy.finder(
+            query, items, key=lambda t: t[0], lazy=False)[:25]
         matches = [
-            DocMatch(name=name, url=url, kind=_role_label(kind), qualname=qualname)
+            DocMatch(name=name, url=url, kind=_role_label(
+                kind), qualname=qualname)
             for name, (url, kind, qualname) in results
         ]
 
         if not matches:
-            await interaction.followup.send(f":mag: Could not find anything for **{query}** in the {library} docs. Sorry.")
+            await interaction.followup.send(f"{Emojis.search} Could not find anything for **{query}** in the {library} docs. Sorry.")
             return
 
         first = matches[0]
         description = await self._get_symbol_description(first.url)
 
         embed = discord.Embed(
-            title=first.name,
-            description=_build_library_description(kind=first.kind, description=description, url=first.url),
+            title=f"{_library_emoji(library)} {first.name}",
+            description=_build_library_description(
+                kind=first.kind, description=description, url=first.url),
             colour=discord.Colour.blurple(),
             url=first.url,
         )
         embed.set_footer(text=f"{library} documentation")
 
-        view = DocsResultView(matches, library=library, author_id=interaction.user.id, cog=self)
+        view = DocsResultView(matches, library=library,
+                              author_id=interaction.user.id, cog=self)
         await interaction.followup.send(embed=embed, view=view)
         view.message = await interaction.original_response()
 

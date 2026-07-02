@@ -147,7 +147,23 @@ class Emojis:
     _code_magnifying_glass = ":mag:"
     hourglass = "⌛"
     thread = "🧵"
-    waving_hand="👋"
+    waving_hand = "👋"
+
+    # ── Moderation and Miscellaneous ──────────────────────────────────────────
+    hammer = "🔨"
+    config = "<:config:1514825015680303184>"
+    mod = "<:mod:1514825058340700220>"
+    nextcord = "<:nextcord:1514825065064038500>"
+    pycord = "<:pycord:1514825071657746584>"
+    disnake = "<:disnake:1514825021778821211>"
+    staff = "<a:staff:1514827803558809661>"
+    verify = "<a:verify:1514827811846754427>"
+    announcement = "<:announcement:1514829488431825068>"
+    ban = "<a:Banned:1514829491715838062>"
+    booster = "<:booster:1514829496530895006>"
+    beta = "<:beta:1514829494463238285>"
+    bot_badge = "<:bot:1514829498670121142>"
+    python="<:Python:1514829629238673520>"
 
     # ── Giveaway ─────────────────────────────────────────────────────────────
     tada = "🎉"
@@ -204,6 +220,7 @@ class Emojis:
     gf_caution = "<a:gf_caution:1514827775851102240>"
     _right_1 = "<a:___1:1514827759577464943> "
     _animated_left_ = "<a:left:1514827784759935086>"
+    animated_ban = "<a:Banned:1514829491715838062>"
 
     # ── Wordle letter emojis ──────────────────────────────────────────────────
     # Used by util/game/__init__.py.  Three colour sets × 26 letters = 78 IDs.
@@ -261,8 +278,22 @@ class Emojis:
     youtube_emoji = "<a:yt:1514827814736629819>"
     github_emoji = "<:github:1514827777906446489>"
 
+    # ── Docs command library icons ──────────────────────────────────────────
+    library_icons: dict[str, str] = {
+        "discord.py": discord_emoji,
+        # Discord Developer Docs (API_DOCS_KEY)
+        "discord-api": discord_emoji,
+        "nextcord": nextcord,
+        "nextcord-ext-menus": nextcord,
+        "nextcord-ext-ipc": nextcord,
+        "disnake": disnake,
+        "py-cord": pycord,
+        "python": python,
+    }
 
 # ── Meme APIs ─────────────────────────────────────────────────────────────────
+
+
 class MemeAPIs:
     _MEME_REDDIT_API = "https://meme-api.com/gimme"
     _MEME_MEMEGEN_API = "https://api.memegen.link/images/random"

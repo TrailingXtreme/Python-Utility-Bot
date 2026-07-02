@@ -20,7 +20,7 @@ from util.db.repositories.config import ConfigRepository
 from util.db.repositories.invite import InviteRepository
 from util.db.repositories.suggestion import SuggestionRepository
 from util.db.repositories.vote import VoteRepository
-
+from util.db.repositories.moderation import ModerationRepository
 
 class Repositories:
     def __init__(self, pool: asyncpg.Pool) -> None:
@@ -30,6 +30,7 @@ class Repositories:
         self.vote = VoteRepository(pool)
         self.suggestion = SuggestionRepository(pool)
         self.invite = InviteRepository(pool)
+        self.moderation = ModerationRepository(pool)
 
 
 __all__ = ["Repositories"]
