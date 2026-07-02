@@ -71,7 +71,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from bot.util.constants import Emojis
+from util.constants import Emojis
 from config import settings
 
 # ── Owner-path execution limits ─────────────────────────────────────────────
@@ -626,9 +626,9 @@ class Eval(commands.Cog, description="Evaluate Python — full access for the ow
         error: app_commands.AppCommandError,
     ) -> None:
         if isinstance(error, app_commands.CommandOnCooldown):
-            msg = f":alarm_clock: Slow down — try again in {error.retry_after:.1f}s."
+            msg = f"{Emojis.alarm_clock} Slow down — try again in {error.retry_after:.1f}s."
         elif isinstance(error, app_commands.CheckFailure):
-            msg = ":no_entry: You don't have permission to use this command."
+            msg = f"{Emojis.no_entry} You don't have permission to use this command."
         else:
             raise error
         if interaction.response.is_done():

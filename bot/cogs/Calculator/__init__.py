@@ -674,7 +674,7 @@ class Calculator(
         after 5 minutes of inactivity.
     """
 
-    COG_EMOJI = "🧮"
+    COG_EMOJI = Emojis.calculator
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

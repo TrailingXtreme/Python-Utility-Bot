@@ -399,7 +399,7 @@ class ApiDocsResultView(DocsAuthorCheckView):
 # ── Cog ────────────────────────────────────────────────────────────────────────
 
 class Docs(commands.Cog, description="Search Discord API wrapper docs, the Python stdlib docs, and the Discord Developer Documentation."):
-    COG_EMOJI = "📚"
+    COG_EMOJI = Emojis.book
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

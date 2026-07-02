@@ -44,24 +44,24 @@ from util.game import (
 # ── Slash-command choices for /tictactoe ──────────────────────────────────────
 
 _TICTACTOE_MODE_CHOICES = [
-    app_commands.Choice(name="🤖  Vs Bot",      value="bot"),
-    app_commands.Choice(name="🧑‍🤝‍🧑  Vs Human", value="human"),
+    app_commands.Choice(name="🤖 Vs Bot",      value="bot"),
+    app_commands.Choice(name="🧑‍🤝‍🧑 Vs Human", value="human"),
 ]
 
 _TICTACTOE_DIFFICULTY_CHOICES = [
-    app_commands.Choice(name="🟢  Easy",   value="easy"),
-    app_commands.Choice(name="🟡  Medium", value="medium"),
-    app_commands.Choice(name="🔴  Hard",   value="hard"),
+    app_commands.Choice(name="🟢Easy",   value="easy"),
+    app_commands.Choice(name="🟡Medium", value="medium"),
+    app_commands.Choice(name="🔴Hard",   value="hard"),
 ]
 
 
 # ── Slash-command choices for /wordle ─────────────────────────────────────────
 
 _WORDLE_CHOICES = [
-    app_commands.Choice(name="🎲  Random",  value="random"),
-    app_commands.Choice(name="📅  Daily",   value="daily"),
-    app_commands.Choice(name="🔢  By ID",   value="id"),
-    app_commands.Choice(name="ℹ️  Info",    value="info"),
+    app_commands.Choice(name=f"{Emojis.game_die} Random",  value="random"),
+    app_commands.Choice(name=f"{Emojis.calendar} Daily",   value="daily"),
+    app_commands.Choice(name=f"{Emojis._emoji_1234} By ID",   value="id"),
+    app_commands.Choice(name=f"{Emojis.info} Info",    value="info"),
 ]
 
 
@@ -101,7 +101,7 @@ class _WordleDeleteView(discord.ui.View):
 
 class Games(commands.Cog, description="🎮 Play games directly in Discord."):
 
-    COG_EMOJI = "🎮"
+    COG_EMOJI = Emojis.game_controller
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

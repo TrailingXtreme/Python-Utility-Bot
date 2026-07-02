@@ -22,7 +22,7 @@ from config import settings
 from discord import app_commands
 from discord.ext import commands
 
-from util.constants import Client
+from util.constants import Client, Emojis
 
 
 # ── Embed helpers ──────────────────────────────────────────────────────────────
@@ -169,7 +169,7 @@ class VoteView(discord.ui.View):
 # ── Cog ────────────────────────────────────────────────────────────────────────
 
 class About(commands.Cog, description="Bot information and the vote system."):
-    COG_EMOJI = "ℹ️"
+    COG_EMOJI = Emojis.info
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

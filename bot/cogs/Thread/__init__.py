@@ -66,6 +66,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from util.constants import Emojis
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -834,7 +835,7 @@ class Threads(
     commands.Cog,
     description="Advanced thread management — lock, archive, purge, manage & more.",
 ):
-    COG_EMOJI = "🧵"
+    COG_EMOJI = Emojis.thread
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

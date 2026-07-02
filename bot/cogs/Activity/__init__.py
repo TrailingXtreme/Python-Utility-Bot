@@ -31,7 +31,7 @@ NOTE ON APPLICATION IDS:
 import discord
 from discord import app_commands
 from discord.ext import commands
-from util.constants import Activities
+from util.constants import Activities, Emojis
 
 class JoinActivityView(discord.ui.View):
     """A single link-style button pointing to the activity invite."""
@@ -48,7 +48,7 @@ class JoinActivityView(discord.ui.View):
 
 
 class Activity(commands.Cog, description="Start Discord voice-channel activities."):
-    COG_EMOJI = "🚀"
+    COG_EMOJI = Emojis.rocket
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

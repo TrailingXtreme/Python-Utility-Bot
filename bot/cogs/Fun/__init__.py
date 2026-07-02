@@ -473,7 +473,7 @@ class JokeView(discord.ui.View):
 class Fun(commands.Cog, description="😄 Fun and entertainment commands."):
     """Silly, light-hearted commands for when you just want to have fun."""
 
-    COG_EMOJI = "😄"
+    COG_EMOJI = Emojis.happy_face
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot

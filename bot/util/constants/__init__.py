@@ -110,6 +110,14 @@ class Emojis:
     repeat = "🔁"
     idea = "💡"
     warning = "⚠️"
+    rocket = "🚀"
+    afk = "💤"
+    calculator = "🧮"
+    happy_face = "😄"
+    _emoji_1234 = "🔢"
+    calendar = "📅"
+    game_controller = "🎮"
+    alarm_clock = "⏰"
 
     # ── Channels (added for channel-management cog) ────────────────────────────
     lock = "🔒"
@@ -138,6 +146,8 @@ class Emojis:
     search = "🔍"
     _code_magnifying_glass = ":mag:"
     hourglass = "⌛"
+    thread = "🧵"
+    waving_hand="👋"
 
     # ── Giveaway ─────────────────────────────────────────────────────────────
     tada = "🎉"
@@ -151,6 +161,8 @@ class Emojis:
     LEFT_EMOJI = "⬅️"
     RIGHT_EMOJI = "➡️"
     LAST_EMOJI = "⏭️"
+    RIGHT_CHEVRON = "▶️"
+    LEFT_CHEVRON = "◀️"
 
     # ── Status ───────────────────────────────────────────────────────────────
     confirmation = "✅"

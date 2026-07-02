@@ -23,6 +23,8 @@ Modernisation vs the nextcord version:
 import discord
 from discord import app_commands
 from discord.ext import commands
+
+from util.constants import Emojis
 from util.db.models import BlacklistedUser
 
 _MAX_PREFIX_LEN = 10
@@ -63,11 +65,11 @@ class BlacklistSelect(discord.ui.Select):
         removed = await interaction.client.db.blacklist.remove(user_id)  # type: ignore[attr-defined]
         if removed:
             await interaction.response.send_message(
-                f"✅ <@{user_id}> has been unblacklisted.", ephemeral=True
+                f"{Emojis.check_mark} <@{user_id}> has been unblacklisted.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                "⚠️ That user was already removed.", ephemeral=True
+                f"{Emojis.warning} That user was already removed.", ephemeral=True
             )
 
 
@@ -101,13 +103,13 @@ class BlacklistView(discord.ui.View):
         total_pages = max(1, -(-len(self.entries) // self.per_page))
 
         prev_btn = discord.ui.Button(
-            label="◀",
+            label=Emojis.LEFT_CHEVRON,
             style=discord.ButtonStyle.secondary,
             disabled=self.page == 0,
             row=1,
         )
         next_btn = discord.ui.Button(
-            label="▶",
+            label=Emojis.RIGHT_CHEVRON,
             style=discord.ButtonStyle.secondary,
             disabled=self.page >= total_pages - 1,
             row=1,
@@ -120,7 +122,7 @@ class BlacklistView(discord.ui.View):
     def _embed(self) -> discord.Embed:
         total_pages = max(1, -(-len(self.entries) // self.per_page))
         embed = discord.Embed(
-            title=f"🚫 Blacklisted Users ({len(self.entries)} total)",
+            title=f"{Emojis.prohibited} Blacklisted Users ({len(self.entries)} total)",
             colour=discord.Colour.red(),
         )
         start = self.page * self.per_page
@@ -154,7 +156,7 @@ class BlacklistView(discord.ui.View):
 # ── Cog ───────────────────────────────────────────────────────────────────────
 
 class Config(commands.Cog, description="Configure the bot for this server."):
-    COG_EMOJI = "⚙️"
+    COG_EMOJI = Emojis.gear
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -193,7 +195,7 @@ class Config(commands.Cog, description="Configure the bot for this server."):
         assert interaction.guild is not None
         cfg = await self.bot.db.config.set_prefix(interaction.guild.id, prefix)  # type: ignore[attr-defined]
         await interaction.response.send_message(
-            f"✅ Prefix set to `{cfg.prefix}`. "
+            f"{Emojis.confirmation} Prefix set to `{cfg.prefix}`. "
             f"Use `{cfg.prefix}help` or </help:0> to get started.",
             ephemeral=True,
         )
@@ -204,7 +206,7 @@ class Config(commands.Cog, description="Configure the bot for this server."):
         assert interaction.guild is not None
         await self.bot.db.config.reset_prefix(interaction.guild.id)  # type: ignore[attr-defined]
         await interaction.response.send_message(
-            "✅ Prefix reset to `t!`.", ephemeral=True
+            f"{Emojis.check_mark} Prefix reset to `t!`.", ephemeral=True
         )
 
     # ── Blacklist commands ─────────────────────────────────────────────────────
@@ -228,7 +230,7 @@ class Config(commands.Cog, description="Configure the bot for this server."):
         assert interaction.guild is not None
         await self.bot.db.blacklist.add(user, interaction.guild.id)  # type: ignore[attr-defined]
         await interaction.response.send_message(
-            f"🚫 **{user}** (`{user.id}`) has been blacklisted.", ephemeral=True
+            f"{Emojis.no_entry} **{user}** (`{user.id}`) has been blacklisted.", ephemeral=True
         )
 
     @blacklist_grp.command(name="remove", description="Unblacklist a user. (Owner only)")
@@ -240,11 +242,11 @@ class Config(commands.Cog, description="Configure the bot for this server."):
         removed = await self.bot.db.blacklist.remove(user.id)  # type: ignore[attr-defined]
         if removed:
             await interaction.response.send_message(
-                f"✅ **{user}** has been unblacklisted.", ephemeral=True
+                f"{Emojis.check_mark} **{user}** has been unblacklisted.", ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                f":no_entry: **{user}** is not blacklisted.", ephemeral=True
+                f"{Emojis.no_entry} **{user}** is not blacklisted.", ephemeral=True
             )
 
     @blacklist_grp.command(name="list", description="Show all blacklisted users. (Owner only)")
@@ -255,7 +257,7 @@ class Config(commands.Cog, description="Configure the bot for this server."):
 
         if not entries:
             await interaction.followup.send(
-                "✅ The blacklist is empty.", ephemeral=True
+                f"{Emojis.check_mark} The blacklist is empty.", ephemeral=True
             )
             return
 
@@ -270,7 +272,7 @@ class Config(commands.Cog, description="Configure the bot for this server."):
     @owner_only
     async def logout(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(
-            "👋 Logging out…", ephemeral=True
+            f"{Emojis.waving_hand} Logging out…", ephemeral=True
         )
         await self.bot.close()
 

@@ -27,6 +27,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from util.constants import Emojis
+
 # ── Modal ─────────────────────────────────────────────────────────────────────
 
 class AfkModal(discord.ui.Modal, title="Set AFK Status"):
@@ -52,7 +54,7 @@ class AfkModal(discord.ui.Modal, title="Set AFK Status"):
 # ── Cog ───────────────────────────────────────────────────────────────────────
 
 class Afk(commands.Cog, description="Set or clear an AFK status."):
-    COG_EMOJI = "💤"
+    COG_EMOJI = Emojis.afk
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
