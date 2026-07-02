@@ -79,7 +79,7 @@ class Activity(commands.Cog, description="Start Discord voice-channel activities
         assert interaction.guild is not None
         if interaction.guild.premium_tier < min_boost:
             await interaction.response.send_message(
-                f":no_entry: **{activity.value}** requires the server to be "
+                f"{Emojis.no_entry} **{activity.value}** requires the server to be "
                 f"Boosted to Level {min_boost} or higher.",
                 ephemeral=True,
             )

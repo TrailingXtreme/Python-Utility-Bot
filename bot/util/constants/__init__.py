@@ -42,19 +42,40 @@ class Activities:
     Metadata for Discord voice-channel Activities (VC games / Watch Together).
     Access the full mapping via Activities._ACTIVITIES.
     """
-    _ACTIVITIES: dict[str, tuple[int, str, int, str]] = {
-        "Watch Together":       (880218394199220334, "📺", 0, "Watch YouTube videos together."),
-        "Sketch Heads":         (902271654783242291, "✏️", 0, "Draw and guess, skribbl.io-style."),
-        "Word Snacks":          (879863976006127627, "🔤", 0, "Multiplayer word-search game."),
-        "Chess in the Park":    (832012774040141894, "♟️", 1, "Classic chess with friends."),
-        "Checkers in the Park": (832013003968348200, "🔴", 1, "Checkers, but more kings."),
-        "Letter League":        (879863686565621790, "📝", 1, "Crossword-style word game."),
-        "Putt Party":           (945737671223947305, "⛳", 0, "Mini-golf mayhem."),
-        "Blazing 8s":           (832025144389533716, "🃏", 1, "Crazy Eights-style card game."),
+    _ACTIVITIES: dict[str, tuple[int, str, int, str]] = { 
+        "Watch Together": (880218394199220334, "📺", 0, "Watch YouTube videos together."),
+        "Sketch Heads": (902271654783242291, "✏️", 0, "Draw and guess what your friends are sketching."),
+        "Land.io": (903769130790969345, "🗺️", 0, "Claim territory and outmaneuver other players."),
+        "Color Together": (1039835161136746497, "🎨", 0, "Collaborative coloring book."),
+        "Whiteboard": (1070087967294631976, "🖊️", 0, "Collaborative digital whiteboard for the whole call."),
+        "TuneIn Radio & Podcasts": (1196535986226745437, "📻", 0, "Listen to live radio and podcasts together."),  
+        "Poker Night": (755827207812677713, "🃏", 1, "Texas hold'em style poker with friends."),
+        "Chess In The Park": (832012774040141894, "♟️", 1, "Classic chess, reskinned for Discord."),
+        "Checkers In The Park": (832013003968348200, "🔴", 1, "Laid-back checkers, companion to Chess in the Park."),
+        "Blazing 8s": (832025144389533716, "🔥", 1, "Uno-style card game (formerly 'Ocho')."),
+        "SpellCast": (852509694341283871, "🔮", 1, "Word-building game where letters cast spells."),
+        "Letter League": (879863686565621790, "🔤", 1, "Competitive word-building game."),
+        "Putt Party": (945737671223947305, "⛳", 1, "Mini golf with power-ups, mega drama."),
+        "Bobble League": (947957217959759964, "⚽", 1, "Tabletop soccer/football with the Bobble crew."),
+        "Know What I Meme": (950505761862189096, "😂", 1, "Meme-matching party game."),
+        "Ask Away": (976052223358406656, "❓", 1, "Icebreaker question game to get conversation going."),
+        # "Bobble Land: Scrappies": (1000100849122553977, "🏝️", 1, "Cooperative Bobble-themed adventure."),
+        "Bash Out": (1006584476094177371, "💥", 1, "Mini multiplayer party-game mayhem."),
+        "Gartic Phone": (1007373802981822582, "🖍️", 1, "Drawing + telephone-game hybrid."),
+        # "Krunker Strike FRVR": (1011683823555199066, "🔫", 1, "Fast-paced multiplayer arena shooter."),
+        # "Chef Showdown": (1037680572660727838, "🍳", 1, "Cooking competition against your friends."),
+        # "Colonist": (1106787098452832296, "🌾", 1, "Settlers-style resource trading and building game."),
+        "Bobble Bash": (1107689944685748377, "🎉", 1, "Bobble-themed party mini-games."),
+        "Goober Dash": (1186785228182798556, "🏃", 1, "Multiplayer obstacle-course race."),
+        "Death by AI": (1194351737264406548, "🤖", 1, "Choose-your-own-adventure judged by an AI."),
+        "BOPZ.io": (1199817737728442569, "🎈", 1, "Battle-royale-style party game."),
+        "Wagons": (1211781489931452447, "🛒", 1, "Cooperative wagon-building game."),
+        "Playscape": (1217076740820832346, "🎮", 1, "Collection of quick multiplayer mini-games."),
     }
 
 
 # ── Bot metadata ──────────────────────────────────────────────────────────────
+
 
 class Client:
     """
@@ -163,7 +184,7 @@ class Emojis:
     booster = "<:booster:1514829496530895006>"
     beta = "<:beta:1514829494463238285>"
     bot_badge = "<:bot:1514829498670121142>"
-    python="<:Python:1514829629238673520>"
+    python = "<:Python:1514829629238673520>"
 
     # ── Giveaway ─────────────────────────────────────────────────────────────
     tada = "🎉"
