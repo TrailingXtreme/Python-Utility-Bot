@@ -135,7 +135,20 @@ async def _can_run(
                 return True
             return await cmd.can_run(ctx)
 
-        if isinstance(cmd, (app_commands.Command, app_commands.Group)):
+        if isinstance(cmd, app_commands.Group):
+            # Groups have no .checks of their own (only individual Commands do);
+            # a Group can only gate access via an overridden interaction_check.
+            if interaction is None:
+                return True
+            checker = getattr(cmd, "interaction_check", None)
+            if checker is None:
+                return True
+            result = checker(interaction)
+            if hasattr(result, "__await__"):
+                result = await result
+            return bool(result)
+
+        if isinstance(cmd, app_commands.Command):
             if interaction is None or not cmd.checks:
                 return True
             for check in cmd.checks:

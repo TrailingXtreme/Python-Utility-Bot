@@ -43,6 +43,7 @@ Notes
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
 import discord
 import humanfriendly
@@ -50,6 +51,12 @@ from discord import app_commands
 from discord.ext import commands
 
 from util.constants import Colours, Emojis
+from util.db.models import LogEvent, ModerationSettings
+from util.db.repositories.moderation import ModerationRepository
+
+# NOTE: adjust the import path above if your repositories live under
+# util/db/repositories/ rather than flat in util/db/ — placed to match
+# where suggestion.py's SuggestionRepository resolves from.
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -136,6 +143,50 @@ async def _check_hierarchy(
     return True
 
 
+async def _log_case(
+    guild: discord.Guild,
+    repo: ModerationRepository,
+    event: LogEvent,
+    *,
+    target: discord.Member | discord.User,
+    moderator: discord.User | discord.Member,
+    reason: str | None,
+    extra: str | None = None,
+) -> None:
+    """
+    Write a numbered case entry to the event's configured log channel
+    (falling back to the general mod-log channel), if one is set.
+    Silently does nothing if no channel is configured or the configured
+    channel no longer exists/isn't sendable — logging must never break
+    the moderation action itself.
+    """
+    settings = await repo.get_or_create(guild.id)
+    channel_id = settings.log_channel_for(event)
+    if channel_id is None:
+        return
+    channel = guild.get_channel(channel_id)
+    if not isinstance(channel, (discord.TextChannel, discord.Thread)):
+        return
+
+    case_no = await repo.next_case(guild.id)
+    embed = discord.Embed(
+        title=f"Case #{case_no} — {event.value.title()}",
+        colour=_WARNING_COLOUR,
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.add_field(name="Member", value=f"{target} ({target.id})", inline=False)
+    embed.add_field(name="Moderator", value=f"{moderator} ({moderator.id})", inline=False)
+    embed.add_field(name="Reason", value=reason or "No reason provided.", inline=False)
+    if extra:
+        embed.add_field(name="Details", value=extra, inline=False)
+    embed.set_thumbnail(url=target.display_avatar.url)
+
+    try:
+        await channel.send(embed=embed)
+    except discord.HTTPException:
+        pass  # Never let a broken log channel take down the moderation action.
+
+
 class _TimeoutView(discord.ui.View):
     """Base view that disables its own components and edits the message when
     it times out, instead of leaving dead, clickable-looking buttons behind.
@@ -166,11 +217,13 @@ class _KickConfirmView(_TimeoutView):
         requester: discord.User | discord.Member,
         *,
         reason: str | None,
+        repo: ModerationRepository,
     ) -> None:
         super().__init__(timeout=30)
         self.member = member
         self.requester = requester
         self.reason = reason
+        self.repo = repo
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.requester.id:
@@ -188,6 +241,11 @@ class _KickConfirmView(_TimeoutView):
             await interaction.response.edit_message(
                 embed=_err(f"I don't have permission to kick **{self.member}**."), view=None)
             return
+        assert interaction.guild is not None
+        await _log_case(
+            interaction.guild, self.repo, LogEvent.KICK,
+            target=self.member, moderator=interaction.user, reason=self.reason,
+        )
         result = _ok(
             f"**{self.member}** has been kicked.\n"
             f"**Reason:** {self.reason or 'No reason provided.'}"
@@ -211,12 +269,14 @@ class _BanConfirmView(_TimeoutView):
         *,
         reason: str | None,
         delete_message_seconds: int,
+        repo: ModerationRepository,
     ) -> None:
         super().__init__(timeout=30)
         self.member = member
         self.requester = requester
         self.reason = reason
         self.delete_message_seconds = delete_message_seconds
+        self.repo = repo
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.requester.id:
@@ -237,6 +297,11 @@ class _BanConfirmView(_TimeoutView):
             await interaction.response.edit_message(
                 embed=_err(f"I don't have permission to ban **{self.member}**."), view=None)
             return
+        assert interaction.guild is not None
+        await _log_case(
+            interaction.guild, self.repo, LogEvent.BAN,
+            target=self.member, moderator=interaction.user, reason=self.reason,
+        )
         result = _ok(
             f"**{self.member}** has been banned {Emojis.animated_ban}.\n"
             f"**Reason:** {self.reason or 'No reason provided.'}"
@@ -257,6 +322,7 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.repo = ModerationRepository(bot.pool)  # type: ignore[attr-defined]
 
     # ── /kick ─────────────────────────────────────────────────────────────────
 
@@ -281,7 +347,7 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
             colour=_WARNING_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
-        view = _KickConfirmView(member, interaction.user, reason=reason)
+        view = _KickConfirmView(member, interaction.user, reason=reason, repo=self.repo)
         await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
         view.message = await interaction.original_response()
 
@@ -318,6 +384,7 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
             member, interaction.user,
             reason=reason,
             delete_message_seconds=delete_message_days * 86_400,
+            repo=self.repo,
         )
         await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
         view.message = await interaction.original_response()
@@ -421,6 +488,12 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
             return
 
         until = discord.utils.format_dt(datetime.now(timezone.utc) + delta, style="R")
+        assert interaction.guild is not None
+        await _log_case(
+            interaction.guild, self.repo, LogEvent.TIMEOUT,
+            target=member, moderator=interaction.user, reason=reason,
+            extra=f"Until {until}",
+        )
         result = _ok(
             f"**{member}** has been timed out until {until}.\n"
             f"**Reason:** {reason or 'No reason provided.'}"
@@ -453,9 +526,112 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
                 embed=_err(f"I don't have permission to untimeout **{member}**."), ephemeral=True)
             return
 
+        assert interaction.guild is not None
+        await _log_case(
+            interaction.guild, self.repo, LogEvent.TIMEOUT,
+            target=member, moderator=interaction.user, reason=reason,
+            extra="Timeout removed",
+        )
         result = _ok(f"**{member}**'s timeout has been removed.")
         result.set_footer(text=f"Requested by {interaction.user}")
         await interaction.response.send_message(embed=result, ephemeral=True)
+
+    # ── /modlog ───────────────────────────────────────────────────────────────
+    # Admin-only settings panel for the moderation_settings row — Dyno/Arcane- style: a general fallback log channel, dedicated per-event channels,
+    # a mute role, and a DM-on-punishment toggle.
+
+    modlog = app_commands.Group(
+        name="modlog",
+        description="Configure moderation log channels and related settings.",
+        default_permissions=discord.Permissions(manage_guild=True),
+    )
+
+    @modlog.command(name="set", description="Set the log channel for an event (or the general fallback).")
+    @app_commands.describe(event="Which event to log — 'general' is the fallback used when a specific one isn't set", channel="The channel to send log entries to")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def modlog_set(
+        self,
+        interaction: discord.Interaction,
+        event: Literal["general", "kick", "ban", "timeout", "automod"],
+        channel: discord.TextChannel,
+    ) -> None:
+        assert interaction.guild is not None
+        if event == "general":
+            await self.repo.set_mod_log_channel(interaction.guild.id, channel.id)
+        else:
+            await self.repo.set_log_channel(interaction.guild.id, LogEvent(event), channel.id)
+        await interaction.response.send_message(
+            embed=_ok(f"**{event.title()}** log channel set to {channel.mention}."), ephemeral=True)
+
+    @modlog.command(name="clear", description="Clear a previously-set log channel.")
+    @app_commands.describe(event="Which event's channel to clear")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def modlog_clear(
+        self,
+        interaction: discord.Interaction,
+        event: Literal["general", "kick", "ban", "timeout", "automod"],
+    ) -> None:
+        assert interaction.guild is not None
+        if event == "general":
+            await self.repo.set_mod_log_channel(interaction.guild.id, None)
+        else:
+            await self.repo.set_log_channel(interaction.guild.id, LogEvent(event), None)
+        await interaction.response.send_message(
+            embed=_ok(f"**{event.title()}** log channel cleared. Falls back to the general channel if set."),
+            ephemeral=True,
+        )
+
+    @modlog.command(name="view", description="View the current moderation log settings.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def modlog_view(self, interaction: discord.Interaction) -> None:
+        assert interaction.guild is not None
+        settings: ModerationSettings = await self.repo.get_or_create(interaction.guild.id)
+
+        def _fmt(channel_id: int | None) -> str:
+            return f"<#{channel_id}>" if channel_id else "*Not set*"
+
+        embed = discord.Embed(
+            title=f"{Emojis.mod}  Moderation Settings",
+            colour=_SUCCESS_COLOUR,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(name="General (fallback)", value=_fmt(settings.mod_log_channel_id), inline=True)
+        embed.add_field(name="Kick", value=_fmt(settings.kick_log_channel_id), inline=True)
+        embed.add_field(name="Ban", value=_fmt(settings.ban_log_channel_id), inline=True)
+        embed.add_field(name="Timeout", value=_fmt(settings.timeout_log_channel_id), inline=True)
+        embed.add_field(name="AutoMod", value=_fmt(settings.automod_log_channel_id), inline=True)
+        embed.add_field(
+            name="Muted role",
+            value=f"<@&{settings.muted_role_id}>" if settings.muted_role_id else "*Not set*",
+            inline=True,
+        )
+        embed.add_field(name="DM on punishment", value="✅ On" if settings.dm_on_punishment else "❌ Off", inline=True)
+        embed.add_field(name="Case count", value=str(settings.case_count), inline=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @modlog.command(name="muted-role", description="Set (or clear) the role used for manual mutes.")
+    @app_commands.describe(role="The mute role — omit to clear")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def modlog_muted_role(
+        self,
+        interaction: discord.Interaction,
+        role: discord.Role | None = None,
+    ) -> None:
+        assert interaction.guild is not None
+        await self.repo.set_muted_role(interaction.guild.id, role.id if role else None)
+        await interaction.response.send_message(
+            embed=_ok(f"Muted role set to {role.mention}." if role else "Muted role cleared."),
+            ephemeral=True,
+        )
+
+    @modlog.command(name="dm-toggle", description="Toggle whether punished members are DMed.")
+    @app_commands.describe(enabled="Whether to DM members when kicked/banned/timed out")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def modlog_dm_toggle(self, interaction: discord.Interaction, enabled: bool) -> None:
+        assert interaction.guild is not None
+        await self.repo.set_dm_on_punishment(interaction.guild.id, enabled)
+        await interaction.response.send_message(
+            embed=_ok(f"DM-on-punishment is now **{'on' if enabled else 'off'}**."), ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

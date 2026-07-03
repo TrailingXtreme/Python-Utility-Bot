@@ -246,6 +246,10 @@ class _PurgeAmountModal(discord.ui.Modal, title="Purge Messages"):
         label="From user (ID or display name — optional)",
         placeholder="Leave blank for all users", required=False, max_length=100,
     )
+    bots_only: discord.ui.TextInput = discord.ui.TextInput(
+        label="Bots only? (yes/no, optional)",
+        placeholder="Leave blank for no", required=False, max_length=3,
+    )
     contains: discord.ui.TextInput = discord.ui.TextInput(
         label="Content contains (optional)",
         placeholder="Leave blank for no text filter", required=False, max_length=200,
@@ -292,9 +296,12 @@ class _PurgeAmountModal(discord.ui.Modal, title="Purge Messages"):
                 return
 
         contains_text = self.contains.value.strip() or None
+        bots_only_flag = self.bots_only.value.strip().lower() in ("yes", "y", "true", "1")
 
         def _check(m: discord.Message) -> bool:
             if target_user and m.author != target_user:
+                return False
+            if bots_only_flag and not m.author.bot:
                 return False
             if contains_text and contains_text.lower() not in m.content.lower():
                 return False
@@ -303,6 +310,8 @@ class _PurgeAmountModal(discord.ui.Modal, title="Purge Messages"):
         filters: list[str] = []
         if target_user:
             filters.append(f"from {target_user.mention}")
+        if bots_only_flag:
+            filters.append("by bots")
         if contains_text:
             filters.append(f"containing `{contains_text}`")
         filter_str = " " + " & ".join(filters) if filters else ""
@@ -456,8 +465,17 @@ class _CloneConfirmView(_TimeoutView):
     @discord.ui.button(label="Clone", emoji=Emojis.clipboard, style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
-        cloned = await self.channel.clone(
-            name=self.new_name, reason=f"Cloned by {interaction.user}")
+        try:
+            cloned = await self.channel.clone(
+                name=self.new_name, reason=f"Cloned by {interaction.user}")
+        except discord.Forbidden:
+            await interaction.response.edit_message(
+                embed=_err("I don't have permission to clone that channel."), view=None)
+            return
+        except discord.HTTPException as e:
+            await interaction.response.edit_message(
+                embed=_err(f"Failed to clone **#{self.channel.name}**: {e}"), view=None)
+            return
         await interaction.response.edit_message(
             embed=_ok(f"Cloned **#{self.channel.name}** → {cloned.mention}."), view=None)
 
@@ -500,7 +518,16 @@ class PurgeConfirmView(_TimeoutView):
                 description=f"{Emojis.hourglass}  Purging messages…", colour=_WARNING_COLOUR),
             view=None,
         )
-        deleted = await self.channel.purge(limit=self.amount, check=self.check, bulk=True)
+        try:
+            deleted = await self.channel.purge(limit=self.amount, check=self.check, bulk=True)
+        except discord.Forbidden:
+            await interaction.edit_original_response(
+                embed=_err("I don't have permission to delete messages in that channel."))
+            return
+        except discord.HTTPException as e:
+            await interaction.edit_original_response(
+                embed=_err(f"Failed to purge messages: {e}"))
+            return
         result = _ok(
             f"Deleted **{len(deleted)}** message(s){self.filter_str} "
             f"in {self.channel.mention}.")
@@ -2150,6 +2177,17 @@ class Channels(
         overwrite.add_reactions = False
         await target.set_permissions(
             interaction.guild.default_role, overwrite=overwrite, reason="Channel archived")
+
+        # Make sure locking out @everyone doesn't also lock out the bot itself —
+        # otherwise the notice below (and any future bot messages here) fails
+        # with Forbidden whenever the bot has no other permission source in
+        # this channel besides the @everyone role.
+        me_overwrite = target.overwrites_for(interaction.guild.me)
+        if me_overwrite.send_messages is not True:
+            me_overwrite.send_messages = True
+            await target.set_permissions(
+                interaction.guild.me, overwrite=me_overwrite, reason="Channel archived")
+
         if prefix:
             await target.edit(name=f"{prefix}-{target.name}")
         notice = discord.Embed(
@@ -2158,7 +2196,12 @@ class Channels(
                          "and is now **read-only**."),
             colour=_ARCHIVE_COLOUR, timestamp=datetime.now(timezone.utc),
         )
-        await target.send(embed=notice)
+        try:
+            await target.send(embed=notice)
+        except discord.HTTPException:
+            # Posting the banner is a nice-to-have; don't let it fail the whole
+            # command when the archive itself already succeeded.
+            pass
         await interaction.response.send_message(
             embed=_ok(f"{Emojis.folder} {target.mention} has been archived."), ephemeral=True)
 
@@ -2205,7 +2248,7 @@ class Channels(
     @app_commands.describe(
         amount=f"Number of messages to scan (1 – {PURGE_LIMIT})",
         user="Only delete messages from this member",
-        bots_only="Only delete messages sent by bots",
+        bots_only="Only delete messages sent by bots. (Don't work properly against webhooks and the bot itself.)",
         contains="Only delete messages whose content contains this text",
         attachments_only="Only delete messages that have attachments",
         embeds_only="Only delete messages that have embeds",

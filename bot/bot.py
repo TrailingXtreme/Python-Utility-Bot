@@ -27,6 +27,7 @@ from config import settings
 from discord import app_commands
 from discord.ext import commands
 from util.db.repositories import Repositories
+from util.music import connect_nodes
 
 log = logging.getLogger(__name__)
 
@@ -170,19 +171,19 @@ class DiscordBot(commands.AutoShardedBot):
         # prevent the rest from loading.
         cwd = Path(__file__).parent
         for path in sorted((cwd / "cogs").iterdir()):
-                if path.is_dir() and (path / "__init__.py").exists():
-                    ext = f"cogs.{path.name}"
-                elif path.suffix == ".py" and not path.name.startswith("_"):
-                    ext = f"cogs.{path.stem}"
-                else:
-                    continue
+            if path.is_dir() and (path / "__init__.py").exists():
+                ext = f"cogs.{path.name}"
+            elif path.suffix == ".py" and not path.name.startswith("_"):
+                ext = f"cogs.{path.stem}"
+            else:
+                continue
 
-                try:
-                    await self.load_extension(ext)
-                    log.info("Loaded  %s", ext)
-                except Exception as exc:  # noqa: BLE001
-                    # Expected until Phase 5 — cogs still use nextcord imports.
-                    log.warning("Skipped %s: %s", ext, exc)
+            try:
+                await self.load_extension(ext)
+                log.info("Loaded  %s", ext)
+            except Exception as exc:  # noqa: BLE001
+                # Expected until Phase 5 — cogs still use nextcord imports.
+                log.warning("Skipped %s: %s", ext, exc)
 
         # 4. Slash-command tree sync ──────────────────────────────────────────
         # Debug mode: sync to the dev guild for instant registration (no delay).
@@ -196,6 +197,10 @@ class DiscordBot(commands.AutoShardedBot):
         else:
             await self.tree.sync()
             log.info("Slash commands synced globally.")
+
+        # 5. Music node connection ───────────────────────────────────────────────
+        await connect_nodes(self)
+        log.info("Lavalink node connection initiated.")
 
     # ── Gateway events ────────────────────────────────────────────────────────
 

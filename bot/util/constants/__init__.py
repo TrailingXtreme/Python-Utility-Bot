@@ -215,14 +215,17 @@ class Emojis:
     o = "🇴"   # 🇴  — used as game piece
 
     # ── Music player ─────────────────────────────────────────────────────────
-    resume = "<:emoji_1:900445170103889980>"
-    pause = "<:emoji_2:900445202899140648>"
-    loop = "<:emoji_7:900445329982369802>"
-    closeConnection = "<a:closeimout:848156958834032650>"
+    resume = "<:1246484897535889513:1522504208283078716>"
+    pause = "<:pause:1522508100974805012>"
+    loop = "<:loop:1514824900139810886>"
+    closeConnection = "<a:no_1:1522514298977648650>"
     mute = "<:muted:978168504882716702>"
     halfvolume = "<:halfvolume:978168377069674526>"
     fullvolume = "<:fullvolume:978168177005576283>"
-    shuffle = "<:shuffle:978188396755320862>"
+    shuffle = "<:shuffle:1514825090477588610>"
+    skip = "⏭️"
+    stop = "⏹️"
+    track_note = "🎵"
     list_emoji = "📜"
 
     # ── Animated Emojis ───────────────────────────────────────────────────────────────

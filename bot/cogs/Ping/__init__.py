@@ -13,7 +13,7 @@ class Ping(commands.Cog, description="Get the latency of the bot."):
     @commands.hybrid_command(
         name="ping",
         description="Returns the latency of the bot.",
-        aliases=["latency", "p", "pingpong"],
+        aliases=["latency","pingpong"],
     )
     async def ping(self, ctx: commands.Context) -> None:
         embed = discord.Embed(

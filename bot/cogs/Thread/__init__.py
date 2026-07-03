@@ -331,7 +331,18 @@ class ConfirmDeleteView(discord.ui.View):
     ) -> None:
         name = self.thread.name
         self.stop()
-        await self.thread.delete()
+        try:
+            await self.thread.delete()
+        except discord.Forbidden:
+            await interaction.response.edit_message(
+                embed=_err("I don't have permission to delete that thread."), view=None
+            )
+            return
+        except discord.HTTPException as exc:
+            await interaction.response.edit_message(
+                embed=_err(f"Failed to delete **{name}**: {exc.text}"), view=None
+            )
+            return
         try:
             await interaction.response.edit_message(
                 embed=_ok(f"Thread **{name}** permanently deleted."), view=None
@@ -401,7 +412,16 @@ class PurgeConfirmView(discord.ui.View):
                 description="⏳  Purging messages…", colour=discord.Colour.yellow()),
             view=None,
         )
-        deleted = await self.thread.purge(limit=self.amount, check=self.check, bulk=True)
+        try:
+            deleted = await self.thread.purge(limit=self.amount, check=self.check, bulk=True)
+        except discord.Forbidden:
+            await interaction.edit_original_response(
+                embed=_err("I don't have permission to delete messages in that thread."))
+            return
+        except discord.HTTPException as exc:
+            await interaction.edit_original_response(
+                embed=_err(f"Failed to purge messages: {exc.text}"))
+            return
         result = _ok(
             f"Deleted **{len(deleted)}** message(s){self.filter_str} "
             f"in **{self.thread.name}**.")
@@ -720,7 +740,13 @@ class ManagePanelView(discord.ui.View):
         if not new_locked:
             # Discord requires unarchiving to unlock
             kwargs["archived"] = False
-        await self.thread.edit(**kwargs)
+        try:
+            await self.thread.edit(**kwargs)
+        except discord.HTTPException as exc:
+            await interaction.response.send_message(
+                embed=_err(f"Could not toggle lock: {exc.text}"), ephemeral=True
+            )
+            return
         if fresh := self._fresh(interaction):
             self.thread = fresh
         self._sync()
@@ -730,7 +756,13 @@ class ManagePanelView(discord.ui.View):
     async def toggle_archive(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        await self.thread.edit(archived=not self.thread.archived)
+        try:
+            await self.thread.edit(archived=not self.thread.archived)
+        except discord.HTTPException as exc:
+            await interaction.response.send_message(
+                embed=_err(f"Could not toggle archive state: {exc.text}"), ephemeral=True
+            )
+            return
         if fresh := self._fresh(interaction):
             self.thread = fresh
         self._sync()
@@ -958,8 +990,6 @@ class Threads(
         message_id="Message ID to anchor the thread to (public threads only)",
         channel="Parent channel (defaults to current text channel)",
     )
-    @app_commands.checks.has_permissions(create_public_threads=True)
-    @app_commands.checks.bot_has_permissions(create_public_threads=True)
     async def thread_create(
         self,
         interaction: discord.Interaction,
@@ -967,6 +997,34 @@ class Threads(
         message_id: str | None = None,
         channel: discord.TextChannel | None = None,
     ) -> None:
+        # Permission requirements differ by thread type. The old static
+        # `has_permissions(create_public_threads=True)` decorator ran
+        # regardless of the `private` flag, so a member (or the bot) with
+        # only create_private_threads — but not create_public_threads — was
+        # incorrectly blocked from creating a *private* thread, and anyone
+        # missing create_private_threads could still slip through when
+        # requesting one. Check the permission that actually matches the
+        # requested thread type instead.
+        assert interaction.guild is not None
+        needed_perm = "create_private_threads" if private else "create_public_threads"
+
+        if isinstance(interaction.user, discord.Member) and not getattr(
+            interaction.user.guild_permissions, needed_perm
+        ):
+            await interaction.response.send_message(
+                embed=_err(f"You need the `{needed_perm}` permission to do that."),
+                ephemeral=True,
+            )
+            return
+
+        me = interaction.guild.me
+        if me is not None and not getattr(me.guild_permissions, needed_perm):
+            await interaction.response.send_message(
+                embed=_err(f"I need the `{needed_perm}` permission to do that."),
+                ephemeral=True,
+            )
+            return
+
         # Resolve the parent text channel
         parent: discord.TextChannel
         if channel:
