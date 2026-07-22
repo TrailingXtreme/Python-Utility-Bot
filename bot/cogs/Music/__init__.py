@@ -1126,6 +1126,7 @@ class Music(commands.Cog, description="Play music from YouTube, Spotify, SoundCl
 
     @music_grp.command(name="lyrics", description="Show lyrics for the current or a specified track.")
     @app_commands.describe(query="Track to search for (defaults to what's currently playing).")
+    @app_commands.checks.cooldown(2, 20.0, key=lambda i: i.user.id)
     async def music_lyrics(self, interaction: discord.Interaction, query: str | None = None) -> None:
         assert self.session is not None
         vc = interaction.guild.voice_client if interaction.guild else None

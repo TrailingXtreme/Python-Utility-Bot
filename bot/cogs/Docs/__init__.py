@@ -581,6 +581,7 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
             name="Discord Developer Docs (API)", value=API_DOCS_KEY),
     ])
     @app_commands.autocomplete(query=_query_autocomplete)
+    @app_commands.checks.cooldown(3, 15.0, key=lambda i: i.user.id)
     async def docs(self, interaction: discord.Interaction, library: str, query: str) -> None:
         await interaction.response.defer()
 

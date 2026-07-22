@@ -23,9 +23,15 @@ Commands
 
 Interactive components
 ──────────────────────
-  _TimeoutView       — Base view: disables + edits itself on view timeout.
-  _KickConfirmView   — Kick / Cancel confirm (30 s timeout).
-  _BanConfirmView    — Ban / Cancel confirm (30 s timeout).
+  _TimeoutView         — Base view: disables + edits itself on view timeout.
+  _ConfirmViewBase     — Shared Kick/Ban confirm scaffolding: requester-lock
+                          + an "Edit Reason" button (opens _ReasonModal).
+  _ReasonModal         — Modal used to add/change the reason before confirming.
+  _KickConfirmView     — Kick / Cancel confirm (30 s timeout).
+  _BanConfirmView      — Ban / Cancel confirm (30 s timeout).
+  _ModLogPanelView     — /modlog panel: Select to pick a log slot, a
+                          ChannelSelect / RoleSelect to assign it, and a
+                          button to flip the DM-on-punishment toggle.
 
 Notes
 ─────
@@ -53,10 +59,6 @@ from discord.ext import commands
 from util.constants import Colours, Emojis
 from util.db.models import LogEvent, ModerationSettings
 from util.db.repositories.moderation import ModerationRepository
-
-# NOTE: adjust the import path above if your repositories live under
-# util/db/repositories/ rather than flat in util/db/ — placed to match
-# where suggestion.py's SuggestionRepository resolves from.
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -208,19 +210,42 @@ class _TimeoutView(discord.ui.View):
 
 # ── Confirmation views ───────────────────────────────────────────────────────
 
-class _KickConfirmView(_TimeoutView):
-    """Ephemeral Kick / Cancel confirmation."""
+class _ReasonModal(discord.ui.Modal, title="Edit Reason"):
+    """Lets the requester add or change the reason without cancelling and
+    re-running the command. Opened from the shared 'Edit Reason' button."""
+
+    def __init__(self, view: "_ConfirmViewBase") -> None:
+        super().__init__()
+        self._view = view
+        self.reason_input: discord.ui.TextInput = discord.ui.TextInput(
+            label="Reason",
+            style=discord.TextStyle.paragraph,
+            placeholder="No reason provided.",
+            required=False,
+            max_length=512,
+            default=view.reason,
+        )
+        self.add_item(self.reason_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        self._view.reason = self.reason_input.value or None
+        await interaction.response.edit_message(embed=self._view.build_embed())
+
+
+class _ConfirmViewBase(_TimeoutView):
+    """Shared scaffolding for the Kick/Ban confirm views: locks interaction
+    to the requester and provides the 'Edit Reason' button (+ modal) so
+    subclasses only need to add their action-specific buttons and an embed.
+    """
 
     def __init__(
         self,
-        member: discord.Member,
         requester: discord.User | discord.Member,
         *,
         reason: str | None,
         repo: ModerationRepository,
     ) -> None:
         super().__init__(timeout=30)
-        self.member = member
         self.requester = requester
         self.reason = reason
         self.repo = repo
@@ -232,7 +257,40 @@ class _KickConfirmView(_TimeoutView):
             return False
         return True
 
-    @discord.ui.button(label="Kick", emoji=Emojis.hammer, style=discord.ButtonStyle.danger)
+    def build_embed(self) -> discord.Embed:
+        raise NotImplementedError
+
+    @discord.ui.button(label="Edit Reason", emoji=Emojis.pencil, style=discord.ButtonStyle.secondary, row=1)
+    async def edit_reason(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(_ReasonModal(self))
+
+
+class _KickConfirmView(_ConfirmViewBase):
+    """Ephemeral Kick / Cancel confirmation, with reason editing."""
+
+    def __init__(
+        self,
+        member: discord.Member,
+        requester: discord.User | discord.Member,
+        *,
+        reason: str | None,
+        repo: ModerationRepository,
+    ) -> None:
+        super().__init__(requester, reason=reason, repo=repo)
+        self.member = member
+
+    def build_embed(self) -> discord.Embed:
+        return discord.Embed(
+            title=f"{Emojis.warning}  Confirm Kick",
+            description=(
+                f"Kick **{self.member}** ({self.member.mention}) from the server?\n"
+                f"**Reason:** {self.reason or 'No reason provided.'}"
+            ),
+            colour=_WARNING_COLOUR,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+    @discord.ui.button(label="Kick", emoji=Emojis.hammer, style=discord.ButtonStyle.danger, row=0)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         try:
@@ -253,14 +311,14 @@ class _KickConfirmView(_TimeoutView):
         result.set_footer(text=f"Requested by {self.requester}")
         await interaction.response.edit_message(embed=result, view=None)
 
-    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=0)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         await interaction.response.edit_message(embed=_ok("Kick cancelled."), view=None)
 
 
-class _BanConfirmView(_TimeoutView):
-    """Ephemeral Ban / Cancel confirmation."""
+class _BanConfirmView(_ConfirmViewBase):
+    """Ephemeral Ban / Cancel confirmation, with reason editing."""
 
     def __init__(
         self,
@@ -271,21 +329,23 @@ class _BanConfirmView(_TimeoutView):
         delete_message_seconds: int,
         repo: ModerationRepository,
     ) -> None:
-        super().__init__(timeout=30)
+        super().__init__(requester, reason=reason, repo=repo)
         self.member = member
-        self.requester = requester
-        self.reason = reason
         self.delete_message_seconds = delete_message_seconds
-        self.repo = repo
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.requester.id:
-            await interaction.response.send_message(
-                embed=_err("This confirmation is not for you."), ephemeral=True)
-            return False
-        return True
+    def build_embed(self) -> discord.Embed:
+        return discord.Embed(
+            title=f"{Emojis.warning}  Confirm Ban",
+            description=(
+                f"Ban **{self.member}** ({self.member.mention}) from the server?\n"
+                f"**Reason:** {self.reason or 'No reason provided.'}\n"
+                f"**Delete message history:** last {self.delete_message_seconds // 86_400} day(s)"
+            ),
+            colour=_WARNING_COLOUR,
+            timestamp=datetime.now(timezone.utc),
+        )
 
-    @discord.ui.button(label="Ban", emoji=Emojis.hammer, style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="Ban", emoji=Emojis.hammer, style=discord.ButtonStyle.danger, row=0)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         try:
@@ -309,10 +369,126 @@ class _BanConfirmView(_TimeoutView):
         result.set_footer(text=f"Requested by {self.requester}")
         await interaction.response.edit_message(embed=result, view=None)
 
-    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=0)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
         await interaction.response.edit_message(embed=_ok("Ban cancelled."), view=None)
+
+
+# ── Modlog settings panel ─────────────────────────────────────────────────────
+
+_EVENT_LABELS: dict[str, str] = {
+    "general": "General (fallback)",
+    "kick": "Kick",
+    "ban": "Ban",
+    "timeout": "Timeout",
+    "automod": "AutoMod",
+}
+
+
+class _ModLogPanelView(_TimeoutView):
+    """Interactive alternative to `/modlog set` / `clear` / `muted-role` /
+    `dm-toggle`: pick a log slot with the dropdown, then assign it with the
+    channel select below; the role select and DM button apply immediately.
+    The embed refreshes in place after every action.
+    """
+
+    def __init__(
+        self,
+        guild: discord.Guild,
+        requester: discord.abc.User,
+        repo: ModerationRepository,
+        settings: ModerationSettings,
+    ) -> None:
+        super().__init__(timeout=120)
+        self.guild = guild
+        self.requester = requester
+        self.repo = repo
+        self.settings = settings
+        self.selected_event: str = "general"
+        self._sync_dm_button()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.requester.id:
+            await interaction.response.send_message(
+                embed=_err("This panel is not for you."), ephemeral=True)
+            return False
+        return True
+
+    def build_embed(self) -> discord.Embed:
+        s = self.settings
+
+        def fmt(channel_id: int | None) -> str:
+            return f"<#{channel_id}>" if channel_id else "*Not set*"
+
+        embed = discord.Embed(
+            title=f"{Emojis.mod}  Moderation Settings",
+            description=f"Editing slot: **{_EVENT_LABELS[self.selected_event]}**",
+            colour=_SUCCESS_COLOUR,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(name="General (fallback)", value=fmt(s.mod_log_channel_id), inline=True)
+        embed.add_field(name="Kick", value=fmt(s.kick_log_channel_id), inline=True)
+        embed.add_field(name="Ban", value=fmt(s.ban_log_channel_id), inline=True)
+        embed.add_field(name="Timeout", value=fmt(s.timeout_log_channel_id), inline=True)
+        embed.add_field(name="AutoMod", value=fmt(s.automod_log_channel_id), inline=True)
+        embed.add_field(
+            name="Muted role",
+            value=f"<@&{s.muted_role_id}>" if s.muted_role_id else "*Not set*",
+            inline=True,
+        )
+        embed.add_field(name="DM on punishment", value="✅ On" if s.dm_on_punishment else "❌ Off", inline=True)
+        embed.add_field(name="Case count", value=str(s.case_count), inline=True)
+        return embed
+
+    def _sync_dm_button(self) -> None:
+        self.dm_toggle.label = "Turn DM Off" if self.settings.dm_on_punishment else "Turn DM On"
+        self.dm_toggle.style = (
+            discord.ButtonStyle.secondary if self.settings.dm_on_punishment else discord.ButtonStyle.success
+        )
+
+    @discord.ui.select(
+        placeholder="Choose a log slot to edit…",
+        options=[discord.SelectOption(label=label, value=key) for key, label in _EVENT_LABELS.items()],
+        row=0,
+    )
+    async def event_select(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
+        self.selected_event = select.values[0]
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
+        placeholder="Set the channel for the selected slot…",
+        channel_types=[discord.ChannelType.text, discord.ChannelType.news],
+        row=1,
+    )
+    async def channel_select(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect) -> None:
+        channel_id = select.values[0].id
+        if self.selected_event == "general":
+            self.settings = await self.repo.set_mod_log_channel(self.guild.id, channel_id)
+        else:
+            self.settings = await self.repo.set_log_channel(
+                self.guild.id, LogEvent(self.selected_event), channel_id)
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.select(cls=discord.ui.RoleSelect, placeholder="Set the muted role…", row=2)
+    async def role_select(self, interaction: discord.Interaction, select: discord.ui.RoleSelect) -> None:
+        self.settings = await self.repo.set_muted_role(self.guild.id, select.values[0].id)
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="Turn DM Off", style=discord.ButtonStyle.secondary, row=3)
+    async def dm_toggle(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.settings = await self.repo.set_dm_on_punishment(self.guild.id, not self.settings.dm_on_punishment)
+        self._sync_dm_button()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    @discord.ui.button(label="Clear Selected Slot", emoji=Emojis.close, style=discord.ButtonStyle.danger, row=3)
+    async def clear_selected(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if self.selected_event == "general":
+            self.settings = await self.repo.set_mod_log_channel(self.guild.id, None)
+        else:
+            self.settings = await self.repo.set_log_channel(self.guild.id, LogEvent(self.selected_event), None)
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
 
 # ── Cog ───────────────────────────────────────────────────────────────────────
@@ -338,17 +514,8 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
     ) -> None:
         if not await _check_hierarchy(interaction, member, action="kick"):
             return
-        confirm_embed = discord.Embed(
-            title=f"{Emojis.warning}  Confirm Kick",
-            description=(
-                f"Kick **{member}** ({member.mention}) from the server?\n"
-                f"**Reason:** {reason or 'No reason provided.'}"
-            ),
-            colour=_WARNING_COLOUR,
-            timestamp=datetime.now(timezone.utc),
-        )
         view = _KickConfirmView(member, interaction.user, reason=reason, repo=self.repo)
-        await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
+        await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
         view.message = await interaction.original_response()
 
     # ── /ban ──────────────────────────────────────────────────────────────────
@@ -370,23 +537,13 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
     ) -> None:
         if not await _check_hierarchy(interaction, member, action="ban"):
             return
-        confirm_embed = discord.Embed(
-            title=f"{Emojis.warning}  Confirm Ban",
-            description=(
-                f"Ban **{member}** ({member.mention}) from the server?\n"
-                f"**Reason:** {reason or 'No reason provided.'}\n"
-                f"**Delete message history:** last {delete_message_days} day(s)"
-            ),
-            colour=_WARNING_COLOUR,
-            timestamp=datetime.now(timezone.utc),
-        )
         view = _BanConfirmView(
             member, interaction.user,
             reason=reason,
             delete_message_seconds=delete_message_days * 86_400,
             repo=self.repo,
         )
-        await interaction.response.send_message(embed=confirm_embed, view=view, ephemeral=True)
+        await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
         view.message = await interaction.original_response()
 
     # ── /unban ────────────────────────────────────────────────────────────────
@@ -632,6 +789,15 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
         await self.repo.set_dm_on_punishment(interaction.guild.id, enabled)
         await interaction.response.send_message(
             embed=_ok(f"DM-on-punishment is now **{'on' if enabled else 'off'}**."), ephemeral=True)
+
+    @modlog.command(name="panel", description="Open an interactive panel to configure log channels, mute role, and DM toggle.")
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def modlog_panel(self, interaction: discord.Interaction) -> None:
+        assert interaction.guild is not None
+        settings = await self.repo.get_or_create(interaction.guild.id)
+        view = _ModLogPanelView(interaction.guild, interaction.user, self.repo, settings)
+        await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
+        view.message = await interaction.original_response()
 
 
 async def setup(bot: commands.Bot) -> None:

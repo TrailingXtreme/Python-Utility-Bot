@@ -56,11 +56,15 @@ async def get_prefix(bot: "DiscordBot", message: discord.Message) -> list[str]:
 
 
 # ── Custom CommandTree — centralises slash-command error handling ──────────────
-
 class BotTree(app_commands.CommandTree):
     """
     Subclassing CommandTree is the discord.py 2.x equivalent of
     nextcord's on_application_command_error event.
+
+    Dispatch order matters: subclasses must be checked before their parents
+    (e.g. MissingRole is a subclass of CheckFailure — if CheckFailure were
+    checked first, MissingRole would never be reached). isinstance checks
+    below are ordered most-specific-first for exactly this reason.
     """
 
     async def on_error(
@@ -68,25 +72,102 @@ class BotTree(app_commands.CommandTree):
         interaction: discord.Interaction,
         error: app_commands.AppCommandError,
     ) -> None:
-        embed = discord.Embed(
-            title="❌ Error",
-            description="An error occurred while running this command.",
-            colour=0xFF5733,
-        )
-        embed.add_field(
-            name="Details",
-            value=f"```py\n{error}\n```",
-            inline=False,
-        )
+        title, description = self._describe(error)
+
+        embed = discord.Embed(title=title, description=description, colour=0xFF5733)
         embed.set_footer(text=f"Requested by {interaction.user}")
 
-        # interaction.response may already be used if the error is deferred.
+        # Unwrap CommandInvokeError to log the real traceback, not the wrapper.
+        if isinstance(error, app_commands.CommandInvokeError):
+            log.error(
+                "Unhandled error in /%s",
+                interaction.command.qualified_name if interaction.command else "?",
+                exc_info=error.original,
+            )
+        elif not isinstance(
+            error,
+            (
+                app_commands.MissingPermissions,
+                app_commands.BotMissingPermissions,
+                app_commands.CommandOnCooldown,
+                app_commands.MissingRole,
+                app_commands.MissingAnyRole,
+                app_commands.NoPrivateMessage,
+                app_commands.TransformerError,
+            ),
+        ):
+            # Anything outside the "expected, user-facing" set is worth a
+            # server-side log line even though it's still shown to the user.
+            log.warning("Unhandled AppCommandError type: %r", error)
+
         if interaction.response.is_done():
             await interaction.followup.send(embed=embed, ephemeral=True)
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
+    @staticmethod
+    def _describe(error: app_commands.AppCommandError) -> tuple[str, str]:
+        """Return (title, description) for the given error, most-specific first."""
 
+        if isinstance(error, app_commands.MissingPermissions):
+            perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
+            return "🚫 Missing Permissions", f"You need the {perms} permission(s) to use this command."
+
+        if isinstance(error, app_commands.BotMissingPermissions):
+            perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
+            return "🚫 I'm Missing Permissions", f"I need the {perms} permission(s) to do that."
+
+        if isinstance(error, app_commands.CommandOnCooldown):
+            return (
+                "⏰ On Cooldown",
+                f"This command is on cooldown — try again in **{error.retry_after:.1f}s**.",
+            )
+
+        if isinstance(error, app_commands.MissingRole):
+            role = error.missing_role
+            role_str = f"<@&{role}>" if isinstance(role, int) else f"`{role}`"
+            return "🚫 Missing Role", f"You need the {role_str} role to use this command."
+
+        if isinstance(error, app_commands.MissingAnyRole):
+            roles = ", ".join(
+                f"<@&{r}>" if isinstance(r, int) else f"`{r}`" for r in error.missing_roles
+            )
+            return "🚫 Missing Role", f"You need at least one of these roles: {roles}."
+
+        if isinstance(error, app_commands.NoPrivateMessage):
+            return "🚫 Server Only", "This command can't be used in DMs — try it in a server."
+
+        if isinstance(error, app_commands.CommandNotFound):
+            # Rare for app_commands (Discord usually filters stale commands
+            # client-side), but can surface right after a command is renamed
+            # and the tree hasn't finished re-syncing everywhere yet.
+            return (
+                "❓ Command Not Found",
+                "This command no longer exists — it may have just been renamed or removed.",
+            )
+
+        if isinstance(error, app_commands.TransformerError):
+            return (
+                "⚠️ Invalid Input",
+                f"Couldn't convert `{error.value}` to the expected type (`{error.type.name}`).",
+            )
+
+        if isinstance(error, app_commands.CommandInvokeError):
+            # The real exception is `.original` — unwrap it here instead of
+            # showing the user the wrapper's generic repr.
+            return (
+                "❌ Error",
+                f"Something went wrong while running this command:\n```py\n{error.original}\n```",
+            )
+
+        if isinstance(error, app_commands.CheckFailure):
+            # Generic fallback for custom `@app_commands.check(...)` predicates
+            # that don't raise one of the more specific subclasses above.
+            return "🚫 Check Failed", str(error) or "You don't meet the requirements to use this command."
+
+        # Anything else — CommandSignatureMismatch, translation errors, etc.
+        return "❌ Error", f"An unexpected error occurred:\n```py\n{error}\n```"
+    
 # ── Bot class ─────────────────────────────────────────────────────────────────
 
 class DiscordBot(commands.AutoShardedBot):

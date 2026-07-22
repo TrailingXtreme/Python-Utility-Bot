@@ -513,6 +513,7 @@ class Fun(commands.Cog, description="😄 Fun and entertainment commands."):
         name="meme",
         description="Fetch a random Reddit meme.",
     )
+    @app_commands.checks.cooldown(3, 10.0, key=lambda i: i.user.id)
     async def meme(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
         try:
@@ -540,6 +541,7 @@ class Fun(commands.Cog, description="😄 Fun and entertainment commands."):
         safe="Filter out adult / offensive jokes (default: on).",
     )
     @app_commands.choices(category=_JOKE_CHOICES)
+    @app_commands.checks.cooldown(3, 10.0, key=lambda i: i.user.id)
     async def joke(
         self,
         interaction: discord.Interaction,
