@@ -424,6 +424,12 @@ class Docs(commands.Cog, description="Search Discord API wrapper docs, the Pytho
 
     async def cog_load(self) -> None:
         self.session = aiohttp.ClientSession()
+        if _BS4_PARSER == "html.parser":
+            log.warning(
+                "Docs cog: 'lxml' not installed — falling back to the slower "
+                "stdlib html.parser for symbol-description scraping. "
+                "Install with `uv add lxml` for better performance on large pages."
+            )
 
     async def cog_unload(self) -> None:
         if self.session is not None:

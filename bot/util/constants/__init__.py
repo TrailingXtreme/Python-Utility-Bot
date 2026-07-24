@@ -139,6 +139,7 @@ class Emojis:
     calendar = "📅"
     game_controller = "🎮"
     alarm_clock = "⏰"
+    traffic_signal="🚦"
 
     # ── Channels (added for channel-management cog) ────────────────────────────
     lock = "🔒"

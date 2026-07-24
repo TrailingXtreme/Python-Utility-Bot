@@ -27,6 +27,7 @@ from config import settings
 from discord import app_commands
 from discord.ext import commands
 from util.db.repositories import Repositories
+from util.constants import Emojis
 from util.music import connect_nodes
 
 log = logging.getLogger(__name__)
@@ -55,6 +56,216 @@ async def get_prefix(bot: "DiscordBot", message: discord.Message) -> list[str]:
     return commands.when_mentioned_or(prefix)(bot, message)
 
 
+# ── Shared (title, description) describers ─────────────────────────────────────
+# Both the pure-slash error path (BotTree.on_error, for app_commands.Command)
+# and the prefix/hybrid error path (DiscordBot.on_command_error, for
+# commands.ext Command / HybridCommand) end up needing to turn an exception
+# into a user-facing (title, description) pair. The two exception hierarchies
+# (app_commands.AppCommandError vs commands.CommandError) are unrelated, so
+# they get their own describer each — but a hybrid command invoked as a slash
+# command raises commands.HybridCommandError wrapping the *app_commands*
+# error, so on_command_error calls back into describe_app_command_error for
+# that case instead of duplicating the mapping.
+
+def describe_app_command_error(error: app_commands.AppCommandError) -> tuple[str, str]:
+    """Return (title, description) for an app_commands error, most-specific first."""
+
+    if isinstance(error, app_commands.MissingPermissions):
+        perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
+        return f"{Emojis.prohibited} Missing Permissions", f"You need the {perms} permission(s) to use this command."
+
+    if isinstance(error, app_commands.BotMissingPermissions):
+        perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
+        return f"{Emojis.prohibited} I'm Missing Permissions", f"I need the {perms} permission(s) to do that."
+
+    if isinstance(error, app_commands.CommandOnCooldown):
+        return (
+            f"{Emojis.alarm_clock} On Cooldown",
+            f"This command is on cooldown — try again in **{error.retry_after:.1f}s**.",
+        )
+
+    if isinstance(error, app_commands.MissingRole):
+        role = error.missing_role
+        role_str = f"<@&{role}>" if isinstance(role, int) else f"`{role}`"
+        return f"{Emojis.prohibited} Missing Role", f"You need the {role_str} role to use this command."
+
+    if isinstance(error, app_commands.MissingAnyRole):
+        roles = ", ".join(
+            f"<@&{r}>" if isinstance(r, int) else f"`{r}`" for r in error.missing_roles
+        )
+        return f"{Emojis.prohibited} Missing Role", f"You need at least one of these roles: {roles}."
+
+    if isinstance(error, app_commands.NoPrivateMessage):
+        return f"{Emojis.prohibited} Server Only", "This command can't be used in DMs — try it in a server."
+
+    if isinstance(error, app_commands.CommandNotFound):
+        # Rare for app_commands (Discord usually filters stale commands
+        # client-side), but can surface right after a command is renamed
+        # and the tree hasn't finished re-syncing everywhere yet.
+        return (
+            f"{Emojis.question_mark} Command Not Found",
+            "This command no longer exists — it may have just been renamed or removed.",
+        )
+
+    if isinstance(error, app_commands.TransformerError):
+        return (
+            f"{Emojis.warning} Invalid Input",
+            f"Couldn't convert `{error.value}` to the expected type (`{error.type.name}`).",
+        )
+
+    if isinstance(error, app_commands.CommandInvokeError):
+        # The real exception is `.original` — unwrap it here instead of
+        # showing the user the wrapper's generic repr.
+        return (
+            f"{Emojis.decline} Error",
+            f"Something went wrong while running this command:\n```py\n{error.original}\n```",
+        )
+
+    if isinstance(error, app_commands.CheckFailure):
+        # Generic fallback for custom `@app_commands.check(...)` predicates
+        # that don't raise one of the more specific subclasses above.
+        return f"{Emojis.prohibited} Check Failed", str(error) or "You don't meet the requirements to use this command."
+
+    # Anything else — CommandSignatureMismatch, translation errors, etc.
+    return f"{Emojis.decline} Error", f"An unexpected error occurred:\n```py\n{error}\n```"
+
+
+def describe_command_error(error: commands.CommandError) -> tuple[str, str]:
+    """Return (title, description) for a commands.ext error, most-specific first.
+
+    Mirrors describe_app_command_error, but for the completely separate
+    commands.CommandError hierarchy used by prefix commands and by hybrid
+    commands when invoked as text. Ordering follows the same rule: subclasses
+    before their parents (e.g. BadUnionArgument before BadArgument,
+    MissingPermissions before CheckFailure) or the parent's branch would
+    swallow the more specific one.
+    """
+
+    # ── UserInputError family ────────────────────────────────────────────────
+    if isinstance(error, commands.MissingRequiredArgument):
+        return (
+            f"{Emojis.warning} Missing Argument",
+            f"You're missing the `{error.param.name}` argument.\n"
+            f"Check the command's help for the correct usage.",
+        )
+
+    if isinstance(error, commands.MissingRequiredAttachment):
+        return (
+            f"{Emojis.warning} Missing Attachment",
+            f"You need to attach a file for the `{error.param.name}` argument.",
+        )
+
+    if isinstance(error, commands.TooManyArguments):
+        return f"{Emojis.warning} Too Many Arguments", "You passed too many arguments to this command."
+
+    if isinstance(error, commands.BadUnionArgument):
+        types_str = ", ".join(t.__name__ for t in error.converters)
+        return (
+            f"{Emojis.warning} Invalid Input",
+            f"Couldn't convert `{error.param.name}` to any of: {types_str}.",
+        )
+
+    if isinstance(error, commands.BadLiteralArgument):
+        options = ", ".join(f"`{a}`" for a in error.literals)
+        return (
+            f"{Emojis.warning} Invalid Input",
+            f"`{error.param.name}` must be one of: {options}.",
+        )
+
+    if isinstance(error, (commands.MissingFlagArgument, commands.TooManyFlags, commands.MissingRequiredFlag, commands.BadFlagArgument)):
+        return f"{Emojis.warning} Invalid Flags", str(error)
+
+    if isinstance(error, commands.BadArgument):
+        # Catches ChannelNotFound, RoleNotFound, MemberNotFound, BadColourArgument, etc.
+        return f"{Emojis.warning} Invalid Input", str(error)
+
+    if isinstance(error, commands.ConversionError):
+        # Raised when a converter itself raises something other than
+        # BadArgument — .original is the real underlying exception.
+        return f"{Emojis.warning} Invalid Input", f"Couldn't process one of your arguments: {error.original}"
+
+    # ── CheckFailure family (most specific first) ───────────────────────────
+    if isinstance(error, commands.MissingPermissions):
+        perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
+        return f"{Emojis.prohibited} Missing Permissions", f"You need the {perms} permission(s) to use this command."
+
+    if isinstance(error, commands.BotMissingPermissions):
+        perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
+        return f"{Emojis.prohibited} I'm Missing Permissions", f"I need the {perms} permission(s) to do that."
+
+    if isinstance(error, commands.MissingRole):
+        role = error.missing_role
+        role_str = f"<@&{role}>" if isinstance(role, int) else f"`{role}`"
+        return f"{Emojis.prohibited} Missing Role", f"You need the {role_str} role to use this command."
+
+    if isinstance(error, commands.BotMissingRole):
+        role = error.missing_role
+        role_str = f"<@&{role}>" if isinstance(role, int) else f"`{role}`"
+        return f"{Emojis.prohibited} I'm Missing a Role", f"I need the {role_str} role to do that."
+
+    if isinstance(error, commands.MissingAnyRole):
+        roles = ", ".join(
+            f"<@&{r}>" if isinstance(r, int) else f"`{r}`" for r in error.missing_roles
+        )
+        return f"{Emojis.prohibited} Missing Role", f"You need at least one of these roles: {roles}."
+
+    if isinstance(error, commands.BotMissingAnyRole):
+        roles = ", ".join(
+            f"<@&{r}>" if isinstance(r, int) else f"`{r}`" for r in error.missing_roles
+        )
+        return f"{Emojis.prohibited} I'm Missing a Role", f"I need at least one of these roles: {roles}."
+
+    if isinstance(error, commands.NotOwner):
+        return f"{Emojis.prohibited} Owner Only", "Only the bot owner can use this command."
+
+    if isinstance(error, commands.PrivateMessageOnly):
+        return f"{Emojis.prohibited} DM Only", "This command can only be used in DMs."
+
+    if isinstance(error, commands.NoPrivateMessage):
+        return f"{Emojis.prohibited} Server Only", "This command can't be used in DMs — try it in a server."
+
+    if isinstance(error, commands.NSFWChannelRequired):
+        return f"{Emojis.nsfw_emoji} NSFW Only", "This command can only be used in an NSFW channel."
+
+    # ── Rate limiting / concurrency ──────────────────────────────────────────
+    if isinstance(error, commands.CommandOnCooldown):
+        return (
+            f"{Emojis.alarm_clock} On Cooldown",
+            f"This command is on cooldown — try again in **{error.retry_after:.1f}s**.",
+        )
+
+    if isinstance(error, commands.MaxConcurrencyReached):
+        plural = "time" if error.number == 1 else "times"
+        return (
+            f"{Emojis.traffic_signal} Slow Down",
+            f"This command can only be used **{error.number}** {plural} at once per "
+            f"{error.per.name} — wait for it to finish first.",
+        )
+
+    if isinstance(error, commands.DisabledCommand):
+        return f"{Emojis.prohibited} Disabled", "This command is currently disabled."
+
+    # ── Invocation-time failures ─────────────────────────────────────────────
+    if isinstance(error, commands.CommandInvokeError):
+        # The real exception is `.original` — unwrap it here instead of
+        # showing the user the wrapper's generic repr.
+        return (
+            f"{Emojis.decline} Error",
+            f"Something went wrong while running this command:\n```py\n{error.original}\n```",
+        )
+
+    if isinstance(error, commands.CheckAnyFailure):
+        return f"{Emojis.prohibited} Check Failed", "You don't meet the requirements to use this command."
+
+    if isinstance(error, commands.CheckFailure):
+        # Generic fallback for custom `@commands.check(...)` predicates that
+        # don't raise one of the more specific subclasses above.
+        return f"{Emojis.prohibited} Check Failed", str(error) or "You don't meet the requirements to use this command."
+
+    # Anything else — ExtensionError, ArgumentParsingError, etc.
+    return f"{Emojis.decline} Error", f"An unexpected error occurred:\n```py\n{error}\n```"
+
+
 # ── Custom CommandTree — centralises slash-command error handling ──────────────
 class BotTree(app_commands.CommandTree):
     """
@@ -72,7 +283,7 @@ class BotTree(app_commands.CommandTree):
         interaction: discord.Interaction,
         error: app_commands.AppCommandError,
     ) -> None:
-        title, description = self._describe(error)
+        title, description = describe_app_command_error(error)
 
         embed = discord.Embed(title=title, description=description, colour=0xFF5733)
         embed.set_footer(text=f"Requested by {interaction.user}")
@@ -105,69 +316,7 @@ class BotTree(app_commands.CommandTree):
         else:
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @staticmethod
-    def _describe(error: app_commands.AppCommandError) -> tuple[str, str]:
-        """Return (title, description) for the given error, most-specific first."""
 
-        if isinstance(error, app_commands.MissingPermissions):
-            perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
-            return "🚫 Missing Permissions", f"You need the {perms} permission(s) to use this command."
-
-        if isinstance(error, app_commands.BotMissingPermissions):
-            perms = ", ".join(f"`{p}`" for p in error.missing_permissions)
-            return "🚫 I'm Missing Permissions", f"I need the {perms} permission(s) to do that."
-
-        if isinstance(error, app_commands.CommandOnCooldown):
-            return (
-                "⏰ On Cooldown",
-                f"This command is on cooldown — try again in **{error.retry_after:.1f}s**.",
-            )
-
-        if isinstance(error, app_commands.MissingRole):
-            role = error.missing_role
-            role_str = f"<@&{role}>" if isinstance(role, int) else f"`{role}`"
-            return "🚫 Missing Role", f"You need the {role_str} role to use this command."
-
-        if isinstance(error, app_commands.MissingAnyRole):
-            roles = ", ".join(
-                f"<@&{r}>" if isinstance(r, int) else f"`{r}`" for r in error.missing_roles
-            )
-            return "🚫 Missing Role", f"You need at least one of these roles: {roles}."
-
-        if isinstance(error, app_commands.NoPrivateMessage):
-            return "🚫 Server Only", "This command can't be used in DMs — try it in a server."
-
-        if isinstance(error, app_commands.CommandNotFound):
-            # Rare for app_commands (Discord usually filters stale commands
-            # client-side), but can surface right after a command is renamed
-            # and the tree hasn't finished re-syncing everywhere yet.
-            return (
-                "❓ Command Not Found",
-                "This command no longer exists — it may have just been renamed or removed.",
-            )
-
-        if isinstance(error, app_commands.TransformerError):
-            return (
-                "⚠️ Invalid Input",
-                f"Couldn't convert `{error.value}` to the expected type (`{error.type.name}`).",
-            )
-
-        if isinstance(error, app_commands.CommandInvokeError):
-            # The real exception is `.original` — unwrap it here instead of
-            # showing the user the wrapper's generic repr.
-            return (
-                "❌ Error",
-                f"Something went wrong while running this command:\n```py\n{error.original}\n```",
-            )
-
-        if isinstance(error, app_commands.CheckFailure):
-            # Generic fallback for custom `@app_commands.check(...)` predicates
-            # that don't raise one of the more specific subclasses above.
-            return "🚫 Check Failed", str(error) or "You don't meet the requirements to use this command."
-
-        # Anything else — CommandSignatureMismatch, translation errors, etc.
-        return "❌ Error", f"An unexpected error occurred:\n```py\n{error}\n```"
-    
 # ── Bot class ─────────────────────────────────────────────────────────────────
 
 class DiscordBot(commands.AutoShardedBot):
@@ -181,7 +330,6 @@ class DiscordBot(commands.AutoShardedBot):
     """
 
     pool: asyncpg.Pool  # annotated here; assigned in setup_hook
-    db: Repositories    # assigned immediately after pool
     db: Repositories    # annotated here; assigned in setup_hook
 
     def __init__(self) -> None:
@@ -232,8 +380,6 @@ class DiscordBot(commands.AutoShardedBot):
         )
         self.db = Repositories(self.pool)
         log.info("PostgreSQL pool + repositories ready.")
-
-        self.db = Repositories(self.pool)
 
         # 2. Load application emojis and map them by name for easy access.
         app_emojis = await self.fetch_application_emojis()
@@ -341,47 +487,83 @@ class DiscordBot(commands.AutoShardedBot):
         ctx: commands.Context,  # type: ignore[type-arg]
         error: commands.CommandError,
     ) -> None:
-        # Silently ignore unknown commands — avoids spam when bots interact.
+        """
+        Central error handler for every "normal" command — text-prefix,
+        pure-slash-via-hybrid-wrapper, and hybrid commands invoked either
+        way all funnel through here as long as they're commands.ext Commands
+        (registered with @commands.command / @commands.hybrid_command),
+        as opposed to pure app_commands.Command objects registered directly
+        on the tree, which go through BotTree.on_error instead.
+
+        ctx.send(...) is used throughout rather than branching on
+        ctx.interaction: Context.send() already knows how to route to
+        interaction.response / interaction.followup when the command was
+        invoked as a slash command, and falls back to a normal channel
+        message otherwise — including honouring `ephemeral=True` only when
+        there's actually an interaction to be ephemeral on.
+        """
+
+        # Silently ignore unknown commands — avoids spam when bots interact,
+        # or a message just happens to start with the prefix by coincidence.
         if isinstance(error, commands.CommandNotFound):
             return
 
-        assert self.user is not None
-        embed = discord.Embed(
-            title=f"{Emojis.cross_mark} Error",
-            description="An error occurred while running this command.",
-            colour=0xFF5733,
-        )
-        embed.set_author(
-            name=str(self.user),
-            icon_url=self.user.display_avatar.url,
-        )
-
-        if isinstance(error, commands.MissingRequiredArgument):
-            embed.add_field(
-                name="Missing argument",
-                value=f"```{error}```",
-                inline=False,
+        # A hybrid command invoked as a slash command raises its errors
+        # wrapped in HybridCommandError, with `.original` holding the real
+        # app_commands.AppCommandError (e.g. a TransformerError from bad
+        # slash-option input, or that command's own CheckFailure). Reuse the
+        # app-command describer for those instead of falling through to the
+        # commands.ext one, which wouldn't recognise the wrapped type.
+        if isinstance(error, commands.HybridCommandError):
+            title, description = describe_app_command_error(error.original)
+            log_error = (
+                error.original
+                if isinstance(error.original, app_commands.CommandInvokeError)
+                else None
             )
-        elif isinstance(error, commands.MissingPermissions):
-            embed.add_field(
-                name="Missing permissions",
-                value=f"```{error}```",
-                inline=False,
-            )
+        elif isinstance(error, commands.CommandInvokeError):
+            title, description = describe_command_error(error)
+            log_error = error.original
         else:
-            embed.add_field(
-                name="Details",
-                value=f"```py\n{error}\n```",
-                inline=False,
-            )
+            title, description = describe_command_error(error)
+            log_error = None
 
-        if ctx.author.avatar:
-            embed.set_footer(
-                text=f"Requested by {ctx.author}",
-                icon_url=ctx.author.avatar.url,
+        if log_error is not None:
+            log.error(
+                "Unhandled error in %s",
+                ctx.command.qualified_name if ctx.command else "?",
+                exc_info=log_error,
             )
+        elif not isinstance(
+            error,
+            (
+                commands.MissingPermissions,
+                commands.BotMissingPermissions,
+                commands.CommandOnCooldown,
+                commands.MissingRole,
+                commands.MissingAnyRole,
+                commands.NoPrivateMessage,
+                commands.UserInputError,
+                commands.CheckFailure,
+            ),
+        ):
+            # Anything outside the "expected, user-facing" set is worth a
+            # server-side log line even though it's still shown to the user.
+            log.warning("Unhandled CommandError type: %r", error)
 
-        await ctx.send(embed=embed)
+        embed = discord.Embed(title=title, description=description, colour=0xFF5733)
+        embed.set_footer(text=f"Requested by {ctx.author}")
+
+        try:
+            await ctx.send(embed=embed, ephemeral=True)
+        except discord.HTTPException:
+            # Interaction token expired / message send failed for some other
+            # reason — don't let error-handling itself raise an unhandled
+            # exception up into the event loop's default handler.
+            log.warning(
+                "Failed to deliver error message for %s",
+                ctx.command.qualified_name if ctx.command else "?",
+            )
 
     # ── Cleanup ───────────────────────────────────────────────────────────────
 

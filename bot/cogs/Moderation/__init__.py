@@ -52,13 +52,20 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 import discord
-import humanfriendly
 from discord import app_commands
 from discord.ext import commands
 
 from util.constants import Colours, Emojis
 from util.db.models import LogEvent, ModerationSettings
 from util.db.repositories.moderation import ModerationRepository
+
+try:
+    import humanfriendly
+    _HUMANFRIENDLY_AVAILABLE = True
+except ImportError:
+    humanfriendly = None  # type: ignore[assignment]
+    _HUMANFRIENDLY_AVAILABLE = False
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -176,9 +183,12 @@ async def _log_case(
         colour=_WARNING_COLOUR,
         timestamp=datetime.now(timezone.utc),
     )
-    embed.add_field(name="Member", value=f"{target} ({target.id})", inline=False)
-    embed.add_field(name="Moderator", value=f"{moderator} ({moderator.id})", inline=False)
-    embed.add_field(name="Reason", value=reason or "No reason provided.", inline=False)
+    embed.add_field(
+        name="Member", value=f"{target} ({target.id})", inline=False)
+    embed.add_field(name="Moderator",
+                    value=f"{moderator} ({moderator.id})", inline=False)
+    embed.add_field(
+        name="Reason", value=reason or "No reason provided.", inline=False)
     if extra:
         embed.add_field(name="Details", value=extra, inline=False)
     embed.set_thumbnail(url=target.display_avatar.url)
@@ -293,11 +303,20 @@ class _KickConfirmView(_ConfirmViewBase):
     @discord.ui.button(label="Kick", emoji=Emojis.hammer, style=discord.ButtonStyle.danger, row=0)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
+        # Ack immediately — kick() + _log_case() below can be slow enough
+        # (Discord API + DB round-trips) that the interaction token dies
+        # before we get to responding, causing a "404 Unknown interaction".
+        await interaction.response.defer()
         try:
             await self.member.kick(reason=f"By {interaction.user} — {self.reason or 'No reason provided.'}")
         except discord.Forbidden:
-            await interaction.response.edit_message(
+            await interaction.edit_original_response(
                 embed=_err(f"I don't have permission to kick **{self.member}**."), view=None)
+            return
+        except discord.HTTPException:
+            # e.g. the member already left/was removed out from under us.
+            await interaction.edit_original_response(
+                embed=_err(f"Failed to kick **{self.member}** — they may no longer be in the server."), view=None)
             return
         assert interaction.guild is not None
         await _log_case(
@@ -309,7 +328,7 @@ class _KickConfirmView(_ConfirmViewBase):
             f"**Reason:** {self.reason or 'No reason provided.'}"
         )
         result.set_footer(text=f"Requested by {self.requester}")
-        await interaction.response.edit_message(embed=result, view=None)
+        await interaction.edit_original_response(embed=result, view=None)
 
     @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=0)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -348,14 +367,20 @@ class _BanConfirmView(_ConfirmViewBase):
     @discord.ui.button(label="Ban", emoji=Emojis.hammer, style=discord.ButtonStyle.danger, row=0)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.stop()
+        # Same fix as _KickConfirmView.confirm: ack before the slow work.
+        await interaction.response.defer()
         try:
             await self.member.ban(
                 reason=f"By {interaction.user} — {self.reason or 'No reason provided.'}",
                 delete_message_seconds=self.delete_message_seconds,
             )
         except discord.Forbidden:
-            await interaction.response.edit_message(
+            await interaction.edit_original_response(
                 embed=_err(f"I don't have permission to ban **{self.member}**."), view=None)
+            return
+        except discord.HTTPException:
+            await interaction.edit_original_response(
+                embed=_err(f"Failed to ban **{self.member}** — they may no longer be in the server."), view=None)
             return
         assert interaction.guild is not None
         await _log_case(
@@ -367,7 +392,7 @@ class _BanConfirmView(_ConfirmViewBase):
             f"**Reason:** {self.reason or 'No reason provided.'}"
         )
         result.set_footer(text=f"Requested by {self.requester}")
-        await interaction.response.edit_message(embed=result, view=None)
+        await interaction.edit_original_response(embed=result, view=None)
 
     @discord.ui.button(label="Cancel", emoji=Emojis.close, style=discord.ButtonStyle.secondary, row=0)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -427,18 +452,25 @@ class _ModLogPanelView(_TimeoutView):
             colour=_SUCCESS_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
-        embed.add_field(name="General (fallback)", value=fmt(s.mod_log_channel_id), inline=True)
-        embed.add_field(name="Kick", value=fmt(s.kick_log_channel_id), inline=True)
-        embed.add_field(name="Ban", value=fmt(s.ban_log_channel_id), inline=True)
-        embed.add_field(name="Timeout", value=fmt(s.timeout_log_channel_id), inline=True)
-        embed.add_field(name="AutoMod", value=fmt(s.automod_log_channel_id), inline=True)
+        embed.add_field(name="General (fallback)", value=fmt(
+            s.mod_log_channel_id), inline=True)
+        embed.add_field(name="Kick", value=fmt(
+            s.kick_log_channel_id), inline=True)
+        embed.add_field(name="Ban", value=fmt(
+            s.ban_log_channel_id), inline=True)
+        embed.add_field(name="Timeout", value=fmt(
+            s.timeout_log_channel_id), inline=True)
+        embed.add_field(name="AutoMod", value=fmt(
+            s.automod_log_channel_id), inline=True)
         embed.add_field(
             name="Muted role",
             value=f"<@&{s.muted_role_id}>" if s.muted_role_id else "*Not set*",
             inline=True,
         )
-        embed.add_field(name="DM on punishment", value="✅ On" if s.dm_on_punishment else "❌ Off", inline=True)
-        embed.add_field(name="Case count", value=str(s.case_count), inline=True)
+        embed.add_field(name="DM on punishment",
+                        value="✅ On" if s.dm_on_punishment else "❌ Off", inline=True)
+        embed.add_field(name="Case count", value=str(
+            s.case_count), inline=True)
         return embed
 
     def _sync_dm_button(self) -> None:
@@ -449,7 +481,8 @@ class _ModLogPanelView(_TimeoutView):
 
     @discord.ui.select(
         placeholder="Choose a log slot to edit…",
-        options=[discord.SelectOption(label=label, value=key) for key, label in _EVENT_LABELS.items()],
+        options=[discord.SelectOption(label=label, value=key)
+                 for key, label in _EVENT_LABELS.items()],
         row=0,
     )
     async def event_select(self, interaction: discord.Interaction, select: discord.ui.Select) -> None:
@@ -463,32 +496,36 @@ class _ModLogPanelView(_TimeoutView):
         row=1,
     )
     async def channel_select(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect) -> None:
+        await interaction.response.defer()
         channel_id = select.values[0].id
         if self.selected_event == "general":
             self.settings = await self.repo.set_mod_log_channel(self.guild.id, channel_id)
         else:
             self.settings = await self.repo.set_log_channel(
                 self.guild.id, LogEvent(self.selected_event), channel_id)
-        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        await interaction.edit_original_response(embed=self.build_embed(), view=self)
 
     @discord.ui.select(cls=discord.ui.RoleSelect, placeholder="Set the muted role…", row=2)
     async def role_select(self, interaction: discord.Interaction, select: discord.ui.RoleSelect) -> None:
+        await interaction.response.defer()
         self.settings = await self.repo.set_muted_role(self.guild.id, select.values[0].id)
-        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        await interaction.edit_original_response(embed=self.build_embed(), view=self)
 
     @discord.ui.button(label="Turn DM Off", style=discord.ButtonStyle.secondary, row=3)
     async def dm_toggle(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.defer()
         self.settings = await self.repo.set_dm_on_punishment(self.guild.id, not self.settings.dm_on_punishment)
         self._sync_dm_button()
-        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        await interaction.edit_original_response(embed=self.build_embed(), view=self)
 
     @discord.ui.button(label="Clear Selected Slot", emoji=Emojis.close, style=discord.ButtonStyle.danger, row=3)
     async def clear_selected(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.defer()
         if self.selected_event == "general":
             self.settings = await self.repo.set_mod_log_channel(self.guild.id, None)
         else:
             self.settings = await self.repo.set_log_channel(self.guild.id, LogEvent(self.selected_event), None)
-        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        await interaction.edit_original_response(embed=self.build_embed(), view=self)
 
 
 # ── Cog ───────────────────────────────────────────────────────────────────────
@@ -498,7 +535,19 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.repo = ModerationRepository(bot.pool)  # type: ignore[attr-defined]
+        self.repo = ModerationRepository(
+            bot.pool)  # type: ignore[attr-defined]
+
+    async def cog_load(self) -> None:
+        if not _HUMANFRIENDLY_AVAILABLE:
+            raise commands.ExtensionFailed(
+                self.__class__.__module__,
+                ImportError(
+                    "Moderation cog requires 'humanfriendly' for /timeout duration "
+                    "parsing (e.g. '10m', '1h', '3d'). Install it with "
+                    "`uv add humanfriendly` and reload this cog."
+                ),
+            )
 
     # ── /kick ─────────────────────────────────────────────────────────────────
 
@@ -514,7 +563,8 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
     ) -> None:
         if not await _check_hierarchy(interaction, member, action="kick"):
             return
-        view = _KickConfirmView(member, interaction.user, reason=reason, repo=self.repo)
+        view = _KickConfirmView(member, interaction.user,
+                                reason=reason, repo=self.repo)
         await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
         view.message = await interaction.original_response()
 
@@ -563,26 +613,42 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
             user_id = int(user)
         except ValueError:
             await interaction.response.send_message(
-                embed=_err("Pick a user from the autocomplete list, or pass a raw user ID."),
+                embed=_err(
+                    "Pick a user from the autocomplete list, or pass a raw user ID."),
                 ephemeral=True,
             )
             return
 
+        # Ack now — fetch_ban() and unban() below are both Discord API round-trips,
+        # and doing two of them before the first response risks the same
+        # "10062 Unknown interaction" timeout as the kick/ban confirm views.
+        await interaction.response.defer(ephemeral=True)
+
         try:
             ban_entry = await interaction.guild.fetch_ban(discord.Object(id=user_id))
         except discord.NotFound:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=_err("That user isn't currently banned."), ephemeral=True)
             return
 
-        await interaction.guild.unban(
-            ban_entry.user, reason=f"By {interaction.user} — {reason or 'No reason provided.'}")
+        try:
+            await interaction.guild.unban(
+                ban_entry.user, reason=f"By {interaction.user} — {reason or 'No reason provided.'}")
+        except discord.Forbidden:
+            await interaction.followup.send(
+                embed=_err(f"I don't have permission to unban **{ban_entry.user}**."), ephemeral=True)
+            return
+        except discord.HTTPException:
+            await interaction.followup.send(
+                embed=_err(f"Failed to unban **{ban_entry.user}**."), ephemeral=True)
+            return
+
         result = _ok(
             f"**{ban_entry.user}** has been unbanned.\n"
             f"**Reason:** {reason or 'No reason provided.'}"
         )
         result.set_footer(text=f"Requested by {interaction.user}")
-        await interaction.response.send_message(embed=result, ephemeral=True)
+        await interaction.followup.send(embed=result, ephemeral=True)
 
     @unban.autocomplete("user")
     async def unban_autocomplete(
@@ -592,7 +658,8 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
         choices: list[app_commands.Choice[str]] = []
         async for entry in interaction.guild.bans(limit=1000):
             if current.lower() in str(entry.user).lower():
-                choices.append(app_commands.Choice(name=str(entry.user), value=str(entry.user.id)))
+                choices.append(app_commands.Choice(
+                    name=str(entry.user), value=str(entry.user.id)))
             if len(choices) >= 25:
                 break
         return choices
@@ -621,7 +688,8 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
             seconds = humanfriendly.parse_timespan(duration)
         except humanfriendly.InvalidTimespan:
             await interaction.response.send_message(
-                embed=_err(f"`{duration}` isn't a valid duration. Try something like `10m`, `1h`, or `3d`."),
+                embed=_err(
+                    f"`{duration}` isn't a valid duration. Try something like `10m`, `1h`, or `3d`."),
                 ephemeral=True,
             )
             return
@@ -636,15 +704,21 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
                 embed=_err("Timeouts can't be longer than 28 days."), ephemeral=True)
             return
 
+        # Ack before the slow work — member.timeout() (Discord API) plus
+        # _log_case() (DB + possibly another Discord send) before the first
+        # response risks the same interaction-timeout bug as kick/ban.
+        await interaction.response.defer(ephemeral=True)
+
         try:
             await member.timeout(
                 delta, reason=f"By {interaction.user} — {reason or 'No reason provided.'}")
         except discord.Forbidden:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=_err(f"I don't have permission to timeout **{member}**."), ephemeral=True)
             return
 
-        until = discord.utils.format_dt(datetime.now(timezone.utc) + delta, style="R")
+        until = discord.utils.format_dt(
+            datetime.now(timezone.utc) + delta, style="R")
         assert interaction.guild is not None
         await _log_case(
             interaction.guild, self.repo, LogEvent.TIMEOUT,
@@ -656,7 +730,7 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
             f"**Reason:** {reason or 'No reason provided.'}"
         )
         result.set_footer(text=f"Requested by {interaction.user}")
-        await interaction.response.send_message(embed=result, ephemeral=True)
+        await interaction.followup.send(embed=result, ephemeral=True)
 
     # ── /untimeout ────────────────────────────────────────────────────────────
 
@@ -675,11 +749,13 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
                 embed=_err(f"**{member}** isn't currently timed out."), ephemeral=True)
             return
 
+        await interaction.response.defer(ephemeral=True)
+
         try:
             await member.timeout(
                 None, reason=f"By {interaction.user} — {reason or 'No reason provided.'}")
         except discord.Forbidden:
-            await interaction.response.send_message(
+            await interaction.followup.send(
                 embed=_err(f"I don't have permission to untimeout **{member}**."), ephemeral=True)
             return
 
@@ -691,7 +767,7 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
         )
         result = _ok(f"**{member}**'s timeout has been removed.")
         result.set_footer(text=f"Requested by {interaction.user}")
-        await interaction.response.send_message(embed=result, ephemeral=True)
+        await interaction.followup.send(embed=result, ephemeral=True)
 
     # ── /modlog ───────────────────────────────────────────────────────────────
     # Admin-only settings panel for the moderation_settings row — Dyno/Arcane- style: a general fallback log channel, dedicated per-event channels,
@@ -734,7 +810,8 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
         else:
             await self.repo.set_log_channel(interaction.guild.id, LogEvent(event), None)
         await interaction.response.send_message(
-            embed=_ok(f"**{event.title()}** log channel cleared. Falls back to the general channel if set."),
+            embed=_ok(
+                f"**{event.title()}** log channel cleared. Falls back to the general channel if set."),
             ephemeral=True,
         )
 
@@ -752,18 +829,25 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
             colour=_SUCCESS_COLOUR,
             timestamp=datetime.now(timezone.utc),
         )
-        embed.add_field(name="General (fallback)", value=_fmt(settings.mod_log_channel_id), inline=True)
-        embed.add_field(name="Kick", value=_fmt(settings.kick_log_channel_id), inline=True)
-        embed.add_field(name="Ban", value=_fmt(settings.ban_log_channel_id), inline=True)
-        embed.add_field(name="Timeout", value=_fmt(settings.timeout_log_channel_id), inline=True)
-        embed.add_field(name="AutoMod", value=_fmt(settings.automod_log_channel_id), inline=True)
+        embed.add_field(name="General (fallback)", value=_fmt(
+            settings.mod_log_channel_id), inline=True)
+        embed.add_field(name="Kick", value=_fmt(
+            settings.kick_log_channel_id), inline=True)
+        embed.add_field(name="Ban", value=_fmt(
+            settings.ban_log_channel_id), inline=True)
+        embed.add_field(name="Timeout", value=_fmt(
+            settings.timeout_log_channel_id), inline=True)
+        embed.add_field(name="AutoMod", value=_fmt(
+            settings.automod_log_channel_id), inline=True)
         embed.add_field(
             name="Muted role",
             value=f"<@&{settings.muted_role_id}>" if settings.muted_role_id else "*Not set*",
             inline=True,
         )
-        embed.add_field(name="DM on punishment", value="✅ On" if settings.dm_on_punishment else "❌ Off", inline=True)
-        embed.add_field(name="Case count", value=str(settings.case_count), inline=True)
+        embed.add_field(name="DM on punishment",
+                        value="✅ On" if settings.dm_on_punishment else "❌ Off", inline=True)
+        embed.add_field(name="Case count", value=str(
+            settings.case_count), inline=True)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @modlog.command(name="muted-role", description="Set (or clear) the role used for manual mutes.")
@@ -777,7 +861,8 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
         assert interaction.guild is not None
         await self.repo.set_muted_role(interaction.guild.id, role.id if role else None)
         await interaction.response.send_message(
-            embed=_ok(f"Muted role set to {role.mention}." if role else "Muted role cleared."),
+            embed=_ok(
+                f"Muted role set to {role.mention}." if role else "Muted role cleared."),
             ephemeral=True,
         )
 
@@ -794,9 +879,11 @@ class Moderation(commands.Cog, description="Kick, ban, and timeout members."):
     @app_commands.checks.has_permissions(manage_guild=True)
     async def modlog_panel(self, interaction: discord.Interaction) -> None:
         assert interaction.guild is not None
+        await interaction.response.defer(ephemeral=True)
         settings = await self.repo.get_or_create(interaction.guild.id)
-        view = _ModLogPanelView(interaction.guild, interaction.user, self.repo, settings)
-        await interaction.response.send_message(embed=view.build_embed(), view=view, ephemeral=True)
+        view = _ModLogPanelView(
+            interaction.guild, interaction.user, self.repo, settings)
+        await interaction.followup.send(embed=view.build_embed(), view=view, ephemeral=True)
         view.message = await interaction.original_response()
 
 
